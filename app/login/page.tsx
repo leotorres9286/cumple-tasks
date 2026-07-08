@@ -1,0 +1,111 @@
+import { ClipboardList } from "lucide-react";
+import Link from "next/link";
+import { signInWithGoogle, signInWithPassword } from "@/app/auth/actions";
+
+interface LoginPageProps {
+  searchParams: Promise<{
+    error?: string;
+    message?: string;
+    redirectTo?: string;
+  }>;
+}
+
+export default async function LoginPage({ searchParams }: LoginPageProps) {
+  const params = await searchParams;
+  const redirectTo =
+    params.redirectTo?.startsWith("/") && !params.redirectTo.startsWith("//")
+      ? params.redirectTo
+      : "/";
+
+  return (
+    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-5 py-8">
+      <div className="mb-8 flex items-center gap-3">
+        <span className="grid size-11 place-items-center rounded-lg bg-ink text-white shadow-sm">
+          <ClipboardList size={22} />
+        </span>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-moss">
+            Cumple Tasks
+          </p>
+          <h1 className="text-2xl font-semibold text-ink">Iniciar sesion</h1>
+        </div>
+      </div>
+
+      <section className="rounded-lg border border-ink/10 bg-white p-5 shadow-sm">
+        {params.error ? <AuthNotice tone="error" message={params.error} /> : null}
+        {params.message ? <AuthNotice tone="message" message={params.message} /> : null}
+
+        <form action={signInWithPassword} className="space-y-4">
+          <input name="redirectTo" type="hidden" value={redirectTo} />
+          <label className="block">
+            <span className="text-sm font-semibold text-ink">Email</span>
+            <input
+              autoComplete="email"
+              className="mt-1 h-11 w-full rounded-lg border border-ink/15 bg-paper px-3 text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
+              name="email"
+              required
+              type="email"
+            />
+          </label>
+
+          <label className="block">
+            <span className="text-sm font-semibold text-ink">Contrasena</span>
+            <input
+              autoComplete="current-password"
+              className="mt-1 h-11 w-full rounded-lg border border-ink/15 bg-paper px-3 text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
+              name="password"
+              required
+              type="password"
+            />
+          </label>
+
+          <button
+            className="flex h-11 w-full items-center justify-center rounded-lg bg-ink px-4 text-sm font-semibold text-white"
+            type="submit"
+          >
+            Entrar
+          </button>
+        </form>
+
+        <div className="my-4 h-px bg-ink/10" />
+
+        <form action={signInWithGoogle}>
+          <input name="redirectTo" type="hidden" value={redirectTo} />
+          <button
+            className="flex h-11 w-full items-center justify-center rounded-lg border border-ink/15 bg-white px-4 text-sm font-semibold text-ink shadow-sm"
+            type="submit"
+          >
+            Entrar con Google
+          </button>
+        </form>
+      </section>
+
+      <p className="mt-5 text-center text-sm text-ink/65">
+        No tienes cuenta?{" "}
+        <Link className="font-semibold text-moss" href="/registro">
+          Crear cuenta
+        </Link>
+      </p>
+    </main>
+  );
+}
+
+function AuthNotice({
+  message,
+  tone
+}: {
+  message: string;
+  tone: "error" | "message";
+}) {
+  return (
+    <div
+      className={
+        tone === "error"
+          ? "mb-4 rounded-lg border border-coral/30 bg-coral/10 px-3 py-2 text-sm font-medium text-ink"
+          : "mb-4 rounded-lg border border-moss/25 bg-moss/10 px-3 py-2 text-sm font-medium text-ink"
+      }
+    >
+      {message}
+    </div>
+  );
+}

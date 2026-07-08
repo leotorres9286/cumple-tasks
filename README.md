@@ -52,7 +52,15 @@ cp .env.example .env
 npm run dev
 ```
 
-La primera pantalla funciona con datos mock para poder validar UX sin Supabase.
+La app protege `/` con Supabase Auth. Usa:
+
+- `/login` para email/password o Google OAuth.
+- `/registro` para crear una cuenta nueva.
+- `/auth/callback` como callback OAuth/email.
+
+Las altas desde `/registro` crean perfiles con rol `responsable`. El rol `admin` debe asignarse desde seed, SQL o panel de Supabase.
+
+La pantalla principal todavia usa datos mock para poder validar UX mientras se conectan las queries de tareas.
 
 ## Supabase Local
 

@@ -7,6 +7,7 @@ import {
   Check,
   ChevronRight,
   ClipboardList,
+  LogOut,
   MessageSquareText,
   PanelTop,
   Plus,
@@ -16,6 +17,7 @@ import {
   Users
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { signOut } from "@/app/auth/actions";
 import type {
   NotificationEvent,
   Profile,
@@ -34,6 +36,7 @@ interface CumpleTasksAppProps {
   initialTemplates: TaskTemplate[];
   initialTotals: RewardTotal[];
   initialNotifications: NotificationEvent[];
+  viewerProfile: Profile;
 }
 
 type Tab = "tablero" | "totales" | "admin";
@@ -59,20 +62,17 @@ export function CumpleTasksApp({
   initialProfiles,
   initialTemplates,
   initialTotals,
-  initialNotifications
+  initialNotifications,
+  viewerProfile
 }: CumpleTasksAppProps) {
   const [activeTab, setActiveTab] = useState<Tab>("tablero");
-  const [viewerRole, setViewerRole] = useState<UserRole>("admin");
   const [tasks, setTasks] = useState(initialTasks);
   const [toast, setToast] = useState<string | null>(null);
 
-  const viewer = useMemo(
-    () => initialProfiles.find((profile) => profile.role === viewerRole) ?? initialProfiles[0],
-    [initialProfiles, viewerRole]
-  );
+  const viewer = useMemo(() => viewerProfile, [viewerProfile]);
 
   const visibleNotifications = initialNotifications.filter(
-    (notification) => notification.recipientId === "user-supervisor"
+    (notification) => notification.recipientId === viewer.id
   );
 
   useEffect(() => {
@@ -105,9 +105,9 @@ export function CumpleTasksApp({
           occurrence: {
             ...task.occurrence,
             status: nextStatus,
-            completedBy: isCompleting ? "user-r" : task.occurrence.completedBy,
+            completedBy: isCompleting ? viewer.id : task.occurrence.completedBy,
             completedAt: isCompleting ? new Date().toISOString() : task.occurrence.completedAt,
-            verifiedBy: isVerifying ? "user-supervisor" : task.occurrence.verifiedBy,
+            verifiedBy: isVerifying ? viewer.id : task.occurrence.verifiedBy,
             verifiedAt: isVerifying ? new Date().toISOString() : task.occurrence.verifiedAt,
             updatedAt: new Date().toISOString()
           }
@@ -135,7 +135,18 @@ export function CumpleTasksApp({
           </div>
 
           <div className="flex items-center gap-2">
-            <RoleSwitcher value={viewerRole} onChange={setViewerRole} />
+            <div className="hidden min-w-0 items-center gap-2 rounded-lg border border-ink/10 bg-white px-2 py-1.5 shadow-sm sm:flex">
+              <span
+                className="grid size-7 place-items-center rounded-full text-[11px] font-bold text-white"
+                style={{ backgroundColor: viewer.avatarColor }}
+              >
+                {viewer.initials}
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-xs font-semibold text-ink">{viewer.fullName}</p>
+                <p className="text-[11px] font-medium text-moss">{roleLabels[viewer.role]}</p>
+              </div>
+            </div>
             <button
               className="relative grid size-10 place-items-center rounded-full border border-ink/10 bg-white text-ink shadow-sm"
               title="Notificaciones"
@@ -146,6 +157,15 @@ export function CumpleTasksApp({
                 <span className="absolute right-1 top-1 size-2 rounded-full bg-coral" />
               ) : null}
             </button>
+            <form action={signOut}>
+              <button
+                className="grid size-10 place-items-center rounded-full border border-ink/10 bg-white text-ink shadow-sm"
+                title="Cerrar sesion"
+                type="submit"
+              >
+                <LogOut size={18} />
+              </button>
+            </form>
           </div>
         </div>
 
@@ -230,27 +250,6 @@ export function CumpleTasksApp({
         ) : null}
       </AnimatePresence>
     </main>
-  );
-}
-
-function RoleSwitcher({
-  value,
-  onChange
-}: {
-  value: UserRole;
-  onChange: (role: UserRole) => void;
-}) {
-  return (
-    <select
-      aria-label="Rol activo"
-      className="h-10 rounded-lg border border-ink/10 bg-white px-2 text-xs font-semibold text-ink shadow-sm"
-      value={value}
-      onChange={(event) => onChange(event.target.value as UserRole)}
-    >
-      <option value="admin">Admin</option>
-      <option value="supervisor">Supervisor</option>
-      <option value="responsable">Responsable</option>
-    </select>
   );
 }
 

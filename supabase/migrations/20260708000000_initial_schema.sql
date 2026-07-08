@@ -159,7 +159,7 @@ begin
     new.email,
     metadata_name,
     upper(left(metadata_name, 1)),
-    coalesce((new.raw_user_meta_data->>'role')::public.user_role, 'responsable')
+    'responsable'
   )
   on conflict (id) do nothing;
 
