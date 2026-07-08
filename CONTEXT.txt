@@ -1,0 +1,38 @@
+Actúa como un Ingeniero de Software Experto, Arquitecto de Soluciones y Diseñador de UX/UI. Quiero crear una Aplicación Web Progresiva (PWA) móvil-primero (Mobile-First) para un sistema gamificado de gestión de tareas del hogar y hábitos.
+
+Usa Next.js (App Router), React, Tailwind CSS, TypeScript y Framer Motion para el desarrollo. El objetivo es generar un prototipo completamente funcional y limpio.
+
+### 1. MODELO DE DATOS Y ROLES (Supabase PostgreSQL + RLS)
+- **Usuarios y Roles:**
+  - Registro/Login: Soportar autenticación mediante Google (Gmail OAuth) y Email/Password.
+  - Roles: Por defecto, todo usuario registrado tiene el rol de "Responsable". Desde un panel de administración, un usuario con privilegios puede asignar el rol de "Supervisor".
+- **Entidad "Tarea":** Cada tarea debe modelarse con las siguientes propiedades:
+  - Nombre (String)
+  - Descripción (Text)
+  - Notas (Text - Soporta anotaciones internas de la definición, comentarios del responsable y feedback del supervisor)
+  - Tipo: 'Acción' (checklist estándar) o 'Puntuación' (permite registrar un score numérico, ej. Estado de ánimo del 1 al 10).
+  - Ventana de tiempo al día: Hora de inicio y hora de fin (ej. 17:00 a 19:00).
+  - Periodicidad: 'Diaria', 'Semanal' (array de días de la semana seleccionados) o 'Mensual' (día específico del mes).
+  - Vigencia: Fecha/hora de inicio y fecha/hora de finalización general de la tarea.
+  - Puntuación: Valor o puntos/recompensa otorgados al completarse correctamente.
+  - Estado: Enun estricto: ['Creada', 'Iniciada', 'En proceso', 'Finalizada', 'Incorrecta', 'Verificada'].
+  - Asignación: Responsables (Relación uno a muchos: permite uno o más usuarios asignados) y Supervisor (Usuario encargado de verificar).
+
+### 2. ARQUITECTURA DE LA INTERFAZ (UI/UX)
+- **Filosofía Visual:** Diseño ultra-minimalista, limpio y enfocado en la usabilidad móvil (Mobile-First).
+- **Tablero Kanban:** La vista principal de las tareas debe estructurarse como un tablero Kanban simplificado y adaptado a pantallas móviles, donde las columnas representen los Estados clave de las tareas del día actual (ej. Pendientes/Creadas, En Proceso, Finalizadas para revisión). Debe permitir la transición fluida de tareas entre estados.
+- **Dashboard de Totales:** Un panel analítico superior o pestaña independiente que desglose de manera visual los totales acumulados de puntos/recompensas filtrados por periodos: Diario, Semanal y Mensual, desglosado por cada uno de los usuarios (R, I, S).
+
+### 3. REQUISITOS TÉCNICOS PWA Y NOTIFICACIONES
+- **Capacidades PWA:** 
+  - Manifest válido (`manifest.json`) configurado para instalación nativa en iOS y Android (iconos, colores temáticos, standalone).
+  - Soporte Offline Básico utilizando Service Workers (o en su defecto, una estrategia sólida de emulación de estado local e hidratación con React Context / LocalStorage) para interactuar sin conexión.
+- **Animaciones:** Transiciones y microinteracciones fluidas al arrastrar, mover o cambiar el estado de las tareas utilizando Framer Motion o utilidades nativas de Tailwind CSS.
+- **Notificaciones Push:** Implementar la lógica para el envío de Notificaciones Push (o simulación mediante Webhooks/WebSockets en tiempo real). El sistema debe notificar de manera inmediata al Supervisor asignado cada vez que ocurra un cambio de estado o edición en la tarea por parte de los responsables.
+
+### 4. INFRAESTRUCTURA Y DESPLIEGUE
+- **Backend & Auth:** Integración nativa con Supabase para la autenticación, base de datos PostgreSQL y almacenamiento. Es mandatorio que se definan de manera conceptual las políticas de seguridad a nivel de fila (Row Level Security - RLS) para que los usuarios solo operen sobre sus tareas asignadas y los supervisores tengan acceso de lectura/escritura global.
+- **Contenedores:** El proyecto completo debe estar dockerizado. Provee un `Dockerfile` optimizado para entornos de Node.js en Next.js y un archivo `docker-compose.yml` que orqueste la aplicación localmente.
+- **Despliegue:** Preparado estructuralmente para ser desplegado de forma serverless en Vercel, manteniendo compatibilidad con las variables de entorno de Supabase.
+
+Por favor, genera en primer lugar las interfaces de TypeScript detalladas para el modelo de datos (Usuarios, Tareas, Estados) y los scripts de migración SQL correspondientes para Supabase (incluyendo la estructura de tablas y políticas RLS básicas). A continuación, genera los componentes clave del Dashboard Kanban y la configuración del Dockerfile.
