@@ -1,0 +1,641 @@
+"use client";
+
+import { AnimatePresence, Reorder, motion } from "framer-motion";
+import {
+  Bell,
+  CalendarDays,
+  Check,
+  ChevronRight,
+  ClipboardList,
+  MessageSquareText,
+  PanelTop,
+  Plus,
+  ShieldCheck,
+  Sparkles,
+  UserCog,
+  Users
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import type {
+  NotificationEvent,
+  Profile,
+  RewardTotal,
+  TaskStatus,
+  TaskTemplate,
+  TaskWithRelations,
+  UserRole
+} from "@/lib/types";
+import { roleLabels, statusLabels, taskKindLabels } from "@/lib/types";
+import { cn, formatShortDate } from "@/lib/utils";
+
+interface CumpleTasksAppProps {
+  initialTasks: TaskWithRelations[];
+  initialProfiles: Profile[];
+  initialTemplates: TaskTemplate[];
+  initialTotals: RewardTotal[];
+  initialNotifications: NotificationEvent[];
+}
+
+type Tab = "tablero" | "totales" | "admin";
+
+const kanbanColumns: Array<{ status: TaskStatus; title: string }> = [
+  { status: "creada", title: "Pendientes" },
+  { status: "en_proceso", title: "En proceso" },
+  { status: "finalizada", title: "Revision" },
+  { status: "verificada", title: "Verificadas" },
+  { status: "incorrecta", title: "Incorrectas" }
+];
+
+const statusFlow: TaskStatus[] = [
+  "creada",
+  "iniciada",
+  "en_proceso",
+  "finalizada",
+  "verificada"
+];
+
+export function CumpleTasksApp({
+  initialTasks,
+  initialProfiles,
+  initialTemplates,
+  initialTotals,
+  initialNotifications
+}: CumpleTasksAppProps) {
+  const [activeTab, setActiveTab] = useState<Tab>("tablero");
+  const [viewerRole, setViewerRole] = useState<UserRole>("admin");
+  const [tasks, setTasks] = useState(initialTasks);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const viewer = useMemo(
+    () => initialProfiles.find((profile) => profile.role === viewerRole) ?? initialProfiles[0],
+    [initialProfiles, viewerRole]
+  );
+
+  const visibleNotifications = initialNotifications.filter(
+    (notification) => notification.recipientId === "user-supervisor"
+  );
+
+  useEffect(() => {
+    if (!toast) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => setToast(null), 3200);
+    return () => window.clearTimeout(timeout);
+  }, [toast]);
+
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    }
+  }, []);
+
+  function changeStatus(taskId: string, nextStatus: TaskStatus) {
+    setTasks((currentTasks) =>
+      currentTasks.map((task) => {
+        if (task.occurrence.id !== taskId) {
+          return task;
+        }
+
+        const isCompleting = nextStatus === "finalizada";
+        const isVerifying = nextStatus === "verificada" || nextStatus === "incorrecta";
+
+        return {
+          ...task,
+          occurrence: {
+            ...task.occurrence,
+            status: nextStatus,
+            completedBy: isCompleting ? "user-r" : task.occurrence.completedBy,
+            completedAt: isCompleting ? new Date().toISOString() : task.occurrence.completedAt,
+            verifiedBy: isVerifying ? "user-supervisor" : task.occurrence.verifiedBy,
+            verifiedAt: isVerifying ? new Date().toISOString() : task.occurrence.verifiedAt,
+            updatedAt: new Date().toISOString()
+          }
+        };
+      })
+    );
+
+    const taskName = tasks.find((task) => task.occurrence.id === taskId)?.template.name;
+    setToast(
+      `${taskName ?? "Tarea"} cambio a ${statusLabels[nextStatus].toLowerCase()}. Supervisor notificado.`
+    );
+  }
+
+  return (
+    <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col px-3 pb-24 pt-4 sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-20 -mx-3 border-b border-ink/10 bg-paper/90 px-3 pb-3 pt-2 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-moss">
+              Cumple Tasks
+            </p>
+            <h1 className="truncate text-xl font-semibold text-ink sm:text-2xl">
+              Tareas de hoy
+            </h1>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <RoleSwitcher value={viewerRole} onChange={setViewerRole} />
+            <button
+              className="relative grid size-10 place-items-center rounded-full border border-ink/10 bg-white text-ink shadow-sm"
+              title="Notificaciones"
+              type="button"
+            >
+              <Bell size={18} />
+              {visibleNotifications.length > 0 ? (
+                <span className="absolute right-1 top-1 size-2 rounded-full bg-coral" />
+              ) : null}
+            </button>
+          </div>
+        </div>
+
+        <nav className="mt-3 grid grid-cols-3 gap-2">
+          <TabButton
+            active={activeTab === "tablero"}
+            icon={<PanelTop size={16} />}
+            label="Tablero"
+            onClick={() => setActiveTab("tablero")}
+          />
+          <TabButton
+            active={activeTab === "totales"}
+            icon={<Sparkles size={16} />}
+            label="Totales"
+            onClick={() => setActiveTab("totales")}
+          />
+          <TabButton
+            active={activeTab === "admin"}
+            disabled={viewer.role !== "admin"}
+            icon={<UserCog size={16} />}
+            label="Admin"
+            onClick={() => setActiveTab("admin")}
+          />
+        </nav>
+      </header>
+
+      <section className="mt-4">
+        <AnimatePresence mode="wait">
+          {activeTab === "tablero" ? (
+            <motion.div
+              key="tablero"
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              initial={{ opacity: 0, y: 8 }}
+              transition={{ duration: 0.18 }}
+            >
+              <TodaySummary tasks={tasks} />
+              <KanbanBoard
+                tasks={tasks}
+                viewerRole={viewer.role}
+                onStatusChange={changeStatus}
+              />
+            </motion.div>
+          ) : null}
+
+          {activeTab === "totales" ? (
+            <motion.div
+              key="totales"
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              initial={{ opacity: 0, y: 8 }}
+              transition={{ duration: 0.18 }}
+            >
+              <TotalsDashboard totals={initialTotals} />
+            </motion.div>
+          ) : null}
+
+          {activeTab === "admin" ? (
+            <motion.div
+              key="admin"
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              initial={{ opacity: 0, y: 8 }}
+              transition={{ duration: 0.18 }}
+            >
+              <AdminArea profiles={initialProfiles} templates={initialTemplates} />
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </section>
+
+      <AnimatePresence>
+        {toast ? (
+          <motion.div
+            animate={{ opacity: 1, y: 0 }}
+            className="fixed inset-x-3 bottom-4 z-30 mx-auto max-w-md rounded-lg border border-moss/20 bg-ink px-4 py-3 text-sm font-medium text-white shadow-soft"
+            exit={{ opacity: 0, y: 18 }}
+            initial={{ opacity: 0, y: 18 }}
+          >
+            {toast}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </main>
+  );
+}
+
+function RoleSwitcher({
+  value,
+  onChange
+}: {
+  value: UserRole;
+  onChange: (role: UserRole) => void;
+}) {
+  return (
+    <select
+      aria-label="Rol activo"
+      className="h-10 rounded-lg border border-ink/10 bg-white px-2 text-xs font-semibold text-ink shadow-sm"
+      value={value}
+      onChange={(event) => onChange(event.target.value as UserRole)}
+    >
+      <option value="admin">Admin</option>
+      <option value="supervisor">Supervisor</option>
+      <option value="responsable">Responsable</option>
+    </select>
+  );
+}
+
+function TabButton({
+  active,
+  disabled,
+  icon,
+  label,
+  onClick
+}: {
+  active: boolean;
+  disabled?: boolean;
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={cn(
+        "flex h-11 items-center justify-center gap-2 rounded-lg border text-sm font-semibold transition",
+        active
+          ? "border-ink bg-ink text-white"
+          : "border-ink/10 bg-white text-ink shadow-sm",
+        disabled && "cursor-not-allowed opacity-45"
+      )}
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function TodaySummary({ tasks }: { tasks: TaskWithRelations[] }) {
+  const verifiedPoints = tasks
+    .filter((task) => task.occurrence.status === "verificada")
+    .reduce((total, task) => total + task.template.rewardPoints * task.responsibles.length, 0);
+  const readyForReview = tasks.filter((task) => task.occurrence.status === "finalizada").length;
+
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      <MetricTile icon={<ClipboardList size={17} />} label="Hoy" value={tasks.length.toString()} />
+      <MetricTile icon={<ShieldCheck size={17} />} label="Revision" value={readyForReview.toString()} />
+      <MetricTile icon={<Sparkles size={17} />} label="Puntos" value={verifiedPoints.toString()} />
+    </div>
+  );
+}
+
+function MetricTile({
+  icon,
+  label,
+  value
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-lg border border-ink/10 bg-white p-3 shadow-sm">
+      <div className="flex items-center justify-between text-moss">
+        {icon}
+        <span className="text-[11px] font-semibold uppercase">{label}</span>
+      </div>
+      <p className="mt-2 text-2xl font-semibold text-ink">{value}</p>
+    </div>
+  );
+}
+
+function KanbanBoard({
+  tasks,
+  viewerRole,
+  onStatusChange
+}: {
+  tasks: TaskWithRelations[];
+  viewerRole: UserRole;
+  onStatusChange: (taskId: string, status: TaskStatus) => void;
+}) {
+  return (
+    <div className="mt-4 flex gap-3 overflow-x-auto pb-4">
+      {kanbanColumns.map((column) => {
+        const columnTasks = tasks.filter((task) => {
+          if (column.status === "en_proceso") {
+            return task.occurrence.status === "en_proceso" || task.occurrence.status === "iniciada";
+          }
+
+          return task.occurrence.status === column.status;
+        });
+
+        return (
+          <section
+            className="min-w-[82vw] max-w-[82vw] rounded-lg border border-ink/10 bg-white/80 p-3 shadow-sm sm:min-w-[320px] sm:max-w-[320px]"
+            key={column.status}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-ink">{column.title}</h2>
+              <span className="rounded-full bg-mist px-2 py-0.5 text-xs font-semibold text-moss">
+                {columnTasks.length}
+              </span>
+            </div>
+
+            <Reorder.Group
+              axis="y"
+              className="space-y-3"
+              values={columnTasks}
+              onReorder={() => undefined}
+            >
+              <AnimatePresence initial={false}>
+                {columnTasks.map((task) => (
+                  <TaskCard
+                    key={task.occurrence.id}
+                    task={task}
+                    viewerRole={viewerRole}
+                    onStatusChange={onStatusChange}
+                  />
+                ))}
+              </AnimatePresence>
+
+              {columnTasks.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-ink/15 bg-paper/70 p-4 text-center text-sm text-ink/50">
+                  Sin tareas
+                </div>
+              ) : null}
+            </Reorder.Group>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function TaskCard({
+  task,
+  viewerRole,
+  onStatusChange
+}: {
+  task: TaskWithRelations;
+  viewerRole: UserRole;
+  onStatusChange: (taskId: string, status: TaskStatus) => void;
+}) {
+  const currentIndex = statusFlow.indexOf(task.occurrence.status);
+  const nextStatus = statusFlow[Math.min(currentIndex + 1, statusFlow.length - 1)] ?? "en_proceso";
+  const canResponsibleMove =
+    viewerRole === "responsable" &&
+    ["creada", "iniciada", "en_proceso", "incorrecta"].includes(task.occurrence.status);
+  const canSupervisorReview =
+    viewerRole === "supervisor" && task.occurrence.status === "finalizada";
+  const canAdminMove = viewerRole === "admin";
+
+  return (
+    <Reorder.Item
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-lg border border-ink/10 bg-white p-3 shadow-sm"
+      exit={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 10 }}
+      value={task}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-base font-semibold text-ink">{task.template.name}</p>
+          <p className="mt-1 line-clamp-2 text-sm text-ink/65">{task.template.description}</p>
+        </div>
+        <span className="shrink-0 rounded-full bg-honey/20 px-2 py-1 text-xs font-semibold text-ink">
+          +{task.template.rewardPoints}
+        </span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-ink/70">
+        <span className="rounded-md bg-paper px-2 py-1">
+          {task.template.timeWindow.startTime}-{task.template.timeWindow.endTime}
+        </span>
+        <span className="rounded-md bg-paper px-2 py-1">
+          {taskKindLabels[task.template.kind]}
+          {task.occurrence.scoreValue ? ` ${task.occurrence.scoreValue}` : ""}
+        </span>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <div className="flex -space-x-2">
+          {task.responsibles.map((profile) => (
+            <span
+              className="grid size-8 place-items-center rounded-full border-2 border-white text-xs font-bold text-white"
+              key={profile.id}
+              style={{ backgroundColor: profile.avatarColor }}
+              title={profile.fullName}
+            >
+              {profile.initials}
+            </span>
+          ))}
+        </div>
+        <span className="text-xs font-medium text-moss">
+          {statusLabels[task.occurrence.status]}
+        </span>
+      </div>
+
+      {task.notes.length > 0 ? (
+        <div className="mt-3 rounded-lg bg-mist/70 p-2 text-xs text-ink/70">
+          <div className="mb-1 flex items-center gap-1 font-semibold text-ink">
+            <MessageSquareText size={13} />
+            {task.notes.length} nota{task.notes.length > 1 ? "s" : ""}
+          </div>
+          <p className="line-clamp-2">{task.notes[task.notes.length - 1]?.body}</p>
+        </div>
+      ) : null}
+
+      <div className="mt-3 flex gap-2">
+        {canResponsibleMove || canAdminMove ? (
+          <button
+            className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-ink px-3 text-sm font-semibold text-white"
+            onClick={() => onStatusChange(task.occurrence.id, nextStatus)}
+            type="button"
+          >
+            <ChevronRight size={16} />
+            Avanzar
+          </button>
+        ) : null}
+
+        {canSupervisorReview ? (
+          <>
+            <button
+              className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-coral px-3 text-sm font-semibold text-white"
+              onClick={() => onStatusChange(task.occurrence.id, "incorrecta")}
+              type="button"
+            >
+              Incorrecta
+            </button>
+            <button
+              className="grid size-10 place-items-center rounded-lg bg-moss text-white"
+              onClick={() => onStatusChange(task.occurrence.id, "verificada")}
+              title="Verificar"
+              type="button"
+            >
+              <Check size={18} />
+            </button>
+          </>
+        ) : null}
+      </div>
+    </Reorder.Item>
+  );
+}
+
+function TotalsDashboard({ totals }: { totals: RewardTotal[] }) {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-ink">Totales</h2>
+          <p className="text-sm text-ink/60">Puntos por usuario y periodo.</p>
+        </div>
+        <CalendarDays className="text-moss" size={22} />
+      </div>
+
+      {totals.map((total) => (
+        <article
+          className="rounded-lg border border-ink/10 bg-white p-4 shadow-sm"
+          key={total.profileId}
+        >
+          <div className="flex items-center gap-3">
+            <span className="grid size-10 place-items-center rounded-full bg-ink text-sm font-bold text-white">
+              {total.initials}
+            </span>
+            <div>
+              <h3 className="font-semibold text-ink">{total.profileName}</h3>
+              <p className="text-xs text-ink/55">Acumulado verificado</p>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            <PointCell label="Dia" value={total.daily} />
+            <PointCell label="Semana" value={total.weekly} />
+            <PointCell label="Mes" value={total.monthly} />
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function PointCell({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg bg-paper p-3 text-center">
+      <p className="text-[11px] font-semibold uppercase text-moss">{label}</p>
+      <p className="mt-1 text-xl font-semibold text-ink">{value}</p>
+    </div>
+  );
+}
+
+function AdminArea({
+  profiles,
+  templates
+}: {
+  profiles: Profile[];
+  templates: TaskTemplate[];
+}) {
+  const supervisors = profiles.filter((profile) => profile.role === "supervisor");
+  const responsibles = profiles.filter((profile) => profile.role === "responsable");
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-ink">Administracion</h2>
+          <p className="text-sm text-ink/60">Gestion de tareas, usuarios y roles.</p>
+        </div>
+        <button
+          className="grid size-10 place-items-center rounded-lg bg-ink text-white"
+          title="Crear tarea"
+          type="button"
+        >
+          <Plus size={18} />
+        </button>
+      </div>
+
+      <section className="rounded-lg border border-ink/10 bg-white p-4 shadow-sm">
+        <div className="mb-3 flex items-center gap-2">
+          <ClipboardList size={18} className="text-moss" />
+          <h3 className="font-semibold text-ink">Plantillas activas</h3>
+        </div>
+        <div className="space-y-3">
+          {templates.map((template) => (
+            <div
+              className="rounded-lg border border-ink/10 bg-paper p-3"
+              key={template.id}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-ink">{template.name}</p>
+                  <p className="text-xs text-ink/60">
+                    {template.recurrence.kind} · {template.timeWindow.startTime}-
+                    {template.timeWindow.endTime}
+                  </p>
+                </div>
+                <span className="rounded-full bg-moss/10 px-2 py-1 text-xs font-semibold text-moss">
+                  +{template.rewardPoints}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-ink/10 bg-white p-4 shadow-sm">
+        <div className="mb-3 flex items-center gap-2">
+          <Users size={18} className="text-moss" />
+          <h3 className="font-semibold text-ink">Usuarios</h3>
+        </div>
+        <div className="space-y-2">
+          {profiles.map((profile) => (
+            <div
+              className="flex items-center justify-between rounded-lg bg-paper px-3 py-2"
+              key={profile.id}
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <span
+                  className="grid size-9 place-items-center rounded-full text-xs font-bold text-white"
+                  style={{ backgroundColor: profile.avatarColor }}
+                >
+                  {profile.initials}
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-ink">{profile.fullName}</p>
+                  <p className="truncate text-xs text-ink/55">{profile.email}</p>
+                </div>
+              </div>
+              <span className="shrink-0 rounded-full bg-white px-2 py-1 text-xs font-semibold text-ink">
+                {roleLabels[profile.role]}
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="grid gap-3 sm:grid-cols-2">
+        <AdminStat label="Supervisores" value={supervisors.length} />
+        <AdminStat label="Responsables" value={responsibles.length} />
+      </section>
+    </div>
+  );
+}
+
+function AdminStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-ink/10 bg-white p-4 shadow-sm">
+      <p className="text-xs font-semibold uppercase text-moss">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-ink">{value}</p>
+    </div>
+  );
+}

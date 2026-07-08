@@ -1,0 +1,26 @@
+{
+  "name": "Cumple Tasks",
+  "short_name": "Cumple",
+  "description": "Gestion gamificada de tareas del hogar y habitos.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7f5ef",
+  "theme_color": "#f7f5ef",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Tablero",
+      "short_name": "Tablero",
+      "url": "/"
+    }
+  ]
+}
