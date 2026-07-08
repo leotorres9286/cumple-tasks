@@ -17,6 +17,10 @@ PWA mobile-first para gestionar tareas del hogar y habitos con roles, Kanban, pu
 - `supervisor`: revisa tareas finalizadas, las marca como `incorrecta` o `verificada` y puede dejar feedback.
 - `responsable`: avanza sus tareas asignadas hasta `finalizada`.
 
+## Gestion Admin
+
+La pestana `Admin` permite crear, editar, pausar/reactivar y borrar plantillas de tarea en Supabase. Cada plantilla define tipo, ventana horaria, recurrencia, puntos, supervisor y responsables asignados.
+
 El seed local crea:
 
 - Email: `admin@cumple.tasks`

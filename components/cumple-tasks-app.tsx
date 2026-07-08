@@ -10,30 +10,42 @@ import {
   LogOut,
   MessageSquareText,
   PanelTop,
+  PauseCircle,
+  PlayCircle,
   Plus,
+  Save,
   ShieldCheck,
   Sparkles,
+  Trash2,
   UserCog,
   Users
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import {
+  createTaskTemplate,
+  deleteTaskTemplate,
+  setTaskTemplateActive,
+  updateTaskTemplate
+} from "@/app/admin/actions";
 import { signOut } from "@/app/auth/actions";
 import type {
   NotificationEvent,
   Profile,
   RewardTotal,
+  TaskAssignment,
   TaskStatus,
   TaskTemplate,
   TaskWithRelations,
   UserRole
 } from "@/lib/types";
 import { roleLabels, statusLabels, taskKindLabels } from "@/lib/types";
-import { cn, formatShortDate } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 interface CumpleTasksAppProps {
   initialTasks: TaskWithRelations[];
   initialProfiles: Profile[];
   initialTemplates: TaskTemplate[];
+  initialAssignments: TaskAssignment[];
   initialTotals: RewardTotal[];
   initialNotifications: NotificationEvent[];
   viewerProfile: Profile;
@@ -57,10 +69,21 @@ const statusFlow: TaskStatus[] = [
   "verificada"
 ];
 
+const weekdayOptions = [
+  { value: "lunes", label: "L" },
+  { value: "martes", label: "M" },
+  { value: "miercoles", label: "X" },
+  { value: "jueves", label: "J" },
+  { value: "viernes", label: "V" },
+  { value: "sabado", label: "S" },
+  { value: "domingo", label: "D" }
+] as const;
+
 export function CumpleTasksApp({
   initialTasks,
   initialProfiles,
   initialTemplates,
+  initialAssignments,
   initialTotals,
   initialNotifications,
   viewerProfile
@@ -231,7 +254,11 @@ export function CumpleTasksApp({
               initial={{ opacity: 0, y: 8 }}
               transition={{ duration: 0.18 }}
             >
-              <AdminArea profiles={initialProfiles} templates={initialTemplates} />
+              <AdminArea
+                assignments={initialAssignments}
+                profiles={initialProfiles}
+                templates={initialTemplates}
+              />
             </motion.div>
           ) : null}
         </AnimatePresence>
@@ -538,14 +565,28 @@ function PointCell({ label, value }: { label: string; value: number }) {
 }
 
 function AdminArea({
+  assignments,
   profiles,
   templates
 }: {
+  assignments: TaskAssignment[];
   profiles: Profile[];
   templates: TaskTemplate[];
 }) {
-  const supervisors = profiles.filter((profile) => profile.role === "supervisor");
+  const [showCreateForm, setShowCreateForm] = useState(templates.length === 0);
+  const supervisors = profiles.filter(
+    (profile) => profile.role === "supervisor" || profile.role === "admin"
+  );
   const responsibles = profiles.filter((profile) => profile.role === "responsable");
+  const assignmentsByTemplate = useMemo(() => {
+    return assignments.reduce<Map<string, string[]>>((map, assignment) => {
+      const current = map.get(assignment.taskTemplateId) ?? [];
+      current.push(assignment.responsibleId);
+      map.set(assignment.taskTemplateId, current);
+      return map;
+    }, new Map());
+  }, [assignments]);
+  const canManageTasks = supervisors.length > 0 && responsibles.length > 0;
 
   return (
     <div className="space-y-4">
@@ -556,27 +597,64 @@ function AdminArea({
         </div>
         <button
           className="grid size-10 place-items-center rounded-lg bg-ink text-white"
-          title="Crear tarea"
+          onClick={() => setShowCreateForm((current) => !current)}
+          title={showCreateForm ? "Cerrar formulario" : "Crear tarea"}
           type="button"
         >
           <Plus size={18} />
         </button>
       </div>
 
+      {!canManageTasks ? (
+        <div className="rounded-lg border border-honey/35 bg-honey/15 p-4 text-sm text-ink">
+          Crea al menos un responsable y un supervisor/admin antes de asignar tareas.
+        </div>
+      ) : null}
+
+      {showCreateForm ? (
+        <section className="rounded-lg border border-ink/10 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center gap-2">
+            <Plus size={18} className="text-moss" />
+            <h3 className="font-semibold text-ink">Nueva tarea</h3>
+          </div>
+          <form action={createTaskTemplate} className="space-y-4">
+            <TaskTemplateFormFields responsibles={responsibles} supervisors={supervisors} />
+            <button
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 text-sm font-semibold text-white disabled:opacity-45"
+              disabled={!canManageTasks}
+              type="submit"
+            >
+              <Save size={16} />
+              Crear tarea
+            </button>
+          </form>
+        </section>
+      ) : null}
+
       <section className="rounded-lg border border-ink/10 bg-white p-4 shadow-sm">
         <div className="mb-3 flex items-center gap-2">
           <ClipboardList size={18} className="text-moss" />
-          <h3 className="font-semibold text-ink">Plantillas activas</h3>
+          <h3 className="font-semibold text-ink">Plantillas</h3>
         </div>
         <div className="space-y-3">
           {templates.map((template) => (
-            <div
+            <article
               className="rounded-lg border border-ink/10 bg-paper p-3"
               key={template.id}
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="font-semibold text-ink">{template.name}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold text-ink">{template.name}</p>
+                    <span
+                      className={cn(
+                        "rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                        template.active ? "bg-moss/10 text-moss" : "bg-ink/10 text-ink/55"
+                      )}
+                    >
+                      {template.active ? "Activa" : "Pausada"}
+                    </span>
+                  </div>
                   <p className="text-xs text-ink/60">
                     {template.recurrence.kind} · {template.timeWindow.startTime}-
                     {template.timeWindow.endTime}
@@ -586,8 +664,62 @@ function AdminArea({
                   +{template.rewardPoints}
                 </span>
               </div>
-            </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <form action={setTaskTemplateActive}>
+                  <input name="templateId" type="hidden" value={template.id} />
+                  <input
+                    name="active"
+                    type="hidden"
+                    value={template.active ? "false" : "true"}
+                  />
+                  <button
+                    className="flex h-9 items-center gap-2 rounded-lg border border-ink/10 bg-white px-3 text-xs font-semibold text-ink shadow-sm"
+                    type="submit"
+                  >
+                    {template.active ? <PauseCircle size={15} /> : <PlayCircle size={15} />}
+                    {template.active ? "Pausar" : "Activar"}
+                  </button>
+                </form>
+                <form action={deleteTaskTemplate}>
+                  <input name="templateId" type="hidden" value={template.id} />
+                  <button
+                    className="flex h-9 items-center gap-2 rounded-lg border border-coral/25 bg-white px-3 text-xs font-semibold text-coral shadow-sm"
+                    type="submit"
+                  >
+                    <Trash2 size={15} />
+                    Borrar
+                  </button>
+                </form>
+              </div>
+              <details className="mt-3">
+                <summary className="cursor-pointer text-sm font-semibold text-moss">
+                  Editar tarea
+                </summary>
+                <form action={updateTaskTemplate} className="mt-3 space-y-4">
+                  <input name="templateId" type="hidden" value={template.id} />
+                  <TaskTemplateFormFields
+                    assignedResponsibleIds={assignmentsByTemplate.get(template.id) ?? []}
+                    responsibles={responsibles}
+                    supervisors={supervisors}
+                    template={template}
+                  />
+                  <button
+                    className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 text-sm font-semibold text-white disabled:opacity-45"
+                    disabled={!canManageTasks}
+                    type="submit"
+                  >
+                    <Save size={16} />
+                    Guardar cambios
+                  </button>
+                </form>
+              </details>
+            </article>
           ))}
+          {templates.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-ink/15 bg-paper/70 p-4 text-center text-sm text-ink/50">
+              Sin tareas creadas
+            </div>
+          ) : null}
         </div>
       </section>
 
@@ -627,6 +759,201 @@ function AdminArea({
         <AdminStat label="Responsables" value={responsibles.length} />
       </section>
     </div>
+  );
+}
+
+function TaskTemplateFormFields({
+  assignedResponsibleIds = [],
+  responsibles,
+  supervisors,
+  template
+}: {
+  assignedResponsibleIds?: string[];
+  responsibles: Profile[];
+  supervisors: Profile[];
+  template?: TaskTemplate;
+}) {
+  const selectedWeekdays = template?.recurrence.weekdays ?? [];
+  const validFrom = template?.validFrom?.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
+  const validUntil = template?.validUntil?.slice(0, 10) ?? "";
+
+  return (
+    <>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block sm:col-span-2">
+          <span className="text-sm font-semibold text-ink">Nombre</span>
+          <input
+            className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
+            defaultValue={template?.name}
+            name="name"
+            required
+            type="text"
+          />
+        </label>
+        <label className="block sm:col-span-2">
+          <span className="text-sm font-semibold text-ink">Descripcion</span>
+          <textarea
+            className="mt-1 min-h-20 w-full rounded-lg border border-ink/15 bg-white px-3 py-2 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
+            defaultValue={template?.description}
+            name="description"
+          />
+        </label>
+        <label className="block">
+          <span className="text-sm font-semibold text-ink">Tipo</span>
+          <select
+            className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
+            defaultValue={template?.kind ?? "accion"}
+            name="kind"
+          >
+            <option value="accion">Accion</option>
+            <option value="puntuacion">Puntuacion</option>
+          </select>
+        </label>
+        <label className="block">
+          <span className="text-sm font-semibold text-ink">Puntos</span>
+          <input
+            className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
+            defaultValue={template?.rewardPoints ?? 10}
+            min={0}
+            name="rewardPoints"
+            required
+            type="number"
+          />
+        </label>
+        <label className="block">
+          <span className="text-sm font-semibold text-ink">Inicio</span>
+          <input
+            className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
+            defaultValue={template?.timeWindow.startTime ?? "17:00"}
+            name="timeStart"
+            required
+            type="time"
+          />
+        </label>
+        <label className="block">
+          <span className="text-sm font-semibold text-ink">Fin</span>
+          <input
+            className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
+            defaultValue={template?.timeWindow.endTime ?? "18:00"}
+            name="timeEnd"
+            required
+            type="time"
+          />
+        </label>
+        <label className="block">
+          <span className="text-sm font-semibold text-ink">Desde</span>
+          <input
+            className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
+            defaultValue={validFrom}
+            name="validFrom"
+            required
+            type="date"
+          />
+        </label>
+        <label className="block">
+          <span className="text-sm font-semibold text-ink">Hasta</span>
+          <input
+            className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
+            defaultValue={validUntil}
+            name="validUntil"
+            type="date"
+          />
+        </label>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block">
+          <span className="text-sm font-semibold text-ink">Recurrencia</span>
+          <select
+            className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
+            defaultValue={template?.recurrence.kind ?? "diaria"}
+            name="recurrenceKind"
+          >
+            <option value="diaria">Diaria</option>
+            <option value="semanal">Semanal</option>
+            <option value="mensual">Mensual</option>
+          </select>
+        </label>
+        <label className="block">
+          <span className="text-sm font-semibold text-ink">Dia mensual</span>
+          <input
+            className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
+            defaultValue={template?.recurrence.monthDay ?? 1}
+            max={31}
+            min={1}
+            name="monthDay"
+            type="number"
+          />
+        </label>
+      </div>
+
+      <fieldset>
+        <legend className="text-sm font-semibold text-ink">Dias semanales</legend>
+        <div className="mt-2 grid grid-cols-7 gap-1">
+          {weekdayOptions.map((day) => (
+            <label
+              className="flex h-9 items-center justify-center gap-1 rounded-lg border border-ink/10 bg-white text-xs font-semibold text-ink"
+              key={day.value}
+            >
+              <input
+                defaultChecked={selectedWeekdays.includes(day.value)}
+                name="weekdays"
+                type="checkbox"
+                value={day.value}
+              />
+              {day.label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      <label className="block">
+        <span className="text-sm font-semibold text-ink">Supervisor</span>
+        <select
+          className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
+          defaultValue={template?.supervisorId ?? supervisors[0]?.id}
+          name="supervisorId"
+          required
+        >
+          {supervisors.map((profile) => (
+            <option key={profile.id} value={profile.id}>
+              {profile.fullName} · {roleLabels[profile.role]}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <fieldset>
+        <legend className="text-sm font-semibold text-ink">Responsables</legend>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          {responsibles.map((profile) => (
+            <label
+              className="flex items-center gap-2 rounded-lg border border-ink/10 bg-white px-3 py-2 text-sm font-semibold text-ink"
+              key={profile.id}
+            >
+              <input
+                defaultChecked={assignedResponsibleIds.includes(profile.id)}
+                name="responsibleIds"
+                type="checkbox"
+                value={profile.id}
+              />
+              <span
+                className="grid size-7 place-items-center rounded-full text-[11px] font-bold text-white"
+                style={{ backgroundColor: profile.avatarColor }}
+              >
+                {profile.initials}
+              </span>
+              <span className="min-w-0 truncate">{profile.fullName}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      <label className="flex items-center gap-2 text-sm font-semibold text-ink">
+        <input defaultChecked={template?.active ?? true} name="active" type="checkbox" />
+        Activa
+      </label>
+    </>
   );
 }
 
