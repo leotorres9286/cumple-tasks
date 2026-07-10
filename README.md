@@ -21,6 +21,8 @@ PWA mobile-first para gestionar tareas del hogar y habitos con roles, Kanban, pu
 
 La pestana `Admin` permite crear, editar, pausar/reactivar y borrar plantillas de tarea en Supabase. Cada plantilla define tipo, ventana horaria, recurrencia, puntos, supervisor y responsables asignados.
 
+Tambien permite crear usuarios, editar su nombre, iniciales, color y rol, y borrar usuarios. Crear o borrar usuarios usa Supabase Auth Admin, por lo que requiere `SUPABASE_SERVICE_ROLE_KEY` configurada en el servidor.
+
 El seed local crea:
 
 - Email: `admin@cumple.tasks`

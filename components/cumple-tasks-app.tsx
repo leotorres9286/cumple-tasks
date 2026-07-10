@@ -18,13 +18,17 @@ import {
   Sparkles,
   Trash2,
   UserCog,
+  UserPlus,
   Users
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
+  createManagedUser,
   createTaskTemplate,
+  deleteManagedUser,
   deleteTaskTemplate,
   setTaskTemplateActive,
+  updateManagedUser,
   updateTaskTemplate
 } from "@/app/admin/actions";
 import { signOut } from "@/app/auth/actions";
@@ -258,6 +262,7 @@ export function CumpleTasksApp({
                 assignments={initialAssignments}
                 profiles={initialProfiles}
                 templates={initialTemplates}
+                viewerProfile={viewer}
               />
             </motion.div>
           ) : null}
@@ -567,13 +572,16 @@ function PointCell({ label, value }: { label: string; value: number }) {
 function AdminArea({
   assignments,
   profiles,
-  templates
+  templates,
+  viewerProfile
 }: {
   assignments: TaskAssignment[];
   profiles: Profile[];
   templates: TaskTemplate[];
+  viewerProfile: Profile;
 }) {
   const [showCreateForm, setShowCreateForm] = useState(templates.length === 0);
+  const [showCreateUserForm, setShowCreateUserForm] = useState(false);
   const supervisors = profiles.filter(
     (profile) => profile.role === "supervisor" || profile.role === "admin"
   );
@@ -724,32 +732,93 @@ function AdminArea({
       </section>
 
       <section className="rounded-lg border border-ink/10 bg-white p-4 shadow-sm">
-        <div className="mb-3 flex items-center gap-2">
-          <Users size={18} className="text-moss" />
-          <h3 className="font-semibold text-ink">Usuarios</h3>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Users size={18} className="text-moss" />
+            <h3 className="font-semibold text-ink">Usuarios</h3>
+          </div>
+          <button
+            className="grid size-9 place-items-center rounded-lg border border-ink/10 bg-white text-ink shadow-sm"
+            onClick={() => setShowCreateUserForm((current) => !current)}
+            title={showCreateUserForm ? "Cerrar formulario" : "Crear usuario"}
+            type="button"
+          >
+            <UserPlus size={17} />
+          </button>
         </div>
-        <div className="space-y-2">
+
+        {showCreateUserForm ? (
+          <form
+            action={createManagedUser}
+            className="mb-4 rounded-lg border border-ink/10 bg-paper p-3"
+          >
+            <div className="mb-3 flex items-center gap-2">
+              <UserPlus size={17} className="text-moss" />
+              <h4 className="text-sm font-semibold text-ink">Nuevo usuario</h4>
+            </div>
+            <UserFormFields requirePassword />
+            <button
+              className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 text-sm font-semibold text-white"
+              type="submit"
+            >
+              <Save size={16} />
+              Crear usuario
+            </button>
+          </form>
+        ) : null}
+
+        <div className="space-y-3">
           {profiles.map((profile) => (
-            <div
-              className="flex items-center justify-between rounded-lg bg-paper px-3 py-2"
+            <article
+              className="rounded-lg border border-ink/10 bg-paper p-3"
               key={profile.id}
             >
-              <div className="flex min-w-0 items-center gap-3">
-                <span
-                  className="grid size-9 place-items-center rounded-full text-xs font-bold text-white"
-                  style={{ backgroundColor: profile.avatarColor }}
-                >
-                  {profile.initials}
-                </span>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-ink">{profile.fullName}</p>
-                  <p className="truncate text-xs text-ink/55">{profile.email}</p>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span
+                    className="grid size-9 place-items-center rounded-full text-xs font-bold text-white"
+                    style={{ backgroundColor: profile.avatarColor }}
+                  >
+                    {profile.initials}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-ink">{profile.fullName}</p>
+                    <p className="truncate text-xs text-ink/55">{profile.email}</p>
+                  </div>
                 </div>
+                <span className="shrink-0 rounded-full bg-white px-2 py-1 text-xs font-semibold text-ink">
+                  {roleLabels[profile.role]}
+                </span>
               </div>
-              <span className="shrink-0 rounded-full bg-white px-2 py-1 text-xs font-semibold text-ink">
-                {roleLabels[profile.role]}
-              </span>
-            </div>
+
+              <details className="mt-3">
+                <summary className="cursor-pointer text-sm font-semibold text-moss">
+                  Editar usuario
+                </summary>
+                <form action={updateManagedUser} className="mt-3">
+                  <input name="userId" type="hidden" value={profile.id} />
+                  <UserFormFields profile={profile} />
+                  <button
+                    className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 text-sm font-semibold text-white"
+                    type="submit"
+                  >
+                    <Save size={16} />
+                    Guardar usuario
+                  </button>
+                </form>
+                <form action={deleteManagedUser} className="mt-2">
+                  <input name="userId" type="hidden" value={profile.id} />
+                  <button
+                    className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-coral/25 bg-white px-4 text-sm font-semibold text-coral shadow-sm disabled:cursor-not-allowed disabled:opacity-45"
+                    disabled={profile.id === viewerProfile.id}
+                    type="submit"
+                  >
+                    <Trash2 size={16} />
+                    {profile.id === viewerProfile.id ? "No puedes borrarte" : "Borrar usuario"}
+                  </button>
+                </form>
+              </details>
+            </article>
           ))}
         </div>
       </section>
@@ -758,6 +827,87 @@ function AdminArea({
         <AdminStat label="Supervisores" value={supervisors.length} />
         <AdminStat label="Responsables" value={responsibles.length} />
       </section>
+    </div>
+  );
+}
+
+function UserFormFields({
+  profile,
+  requirePassword
+}: {
+  profile?: Profile;
+  requirePassword?: boolean;
+}) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      <label className="block sm:col-span-2">
+        <span className="text-sm font-semibold text-ink">Nombre</span>
+        <input
+          className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
+          defaultValue={profile?.fullName}
+          name="fullName"
+          required
+          type="text"
+        />
+      </label>
+
+      {profile ? null : (
+        <>
+          <label className="block">
+            <span className="text-sm font-semibold text-ink">Email</span>
+            <input
+              autoComplete="email"
+              className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
+              name="email"
+              required
+              type="email"
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-semibold text-ink">Contrasena inicial</span>
+            <input
+              autoComplete="new-password"
+              className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
+              minLength={6}
+              name="password"
+              required={requirePassword}
+              type="password"
+            />
+          </label>
+        </>
+      )}
+
+      <label className="block">
+        <span className="text-sm font-semibold text-ink">Iniciales</span>
+        <input
+          className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm uppercase text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
+          defaultValue={profile?.initials}
+          maxLength={3}
+          name="initials"
+          type="text"
+        />
+      </label>
+      <label className="block">
+        <span className="text-sm font-semibold text-ink">Color</span>
+        <input
+          className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-2 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
+          defaultValue={profile?.avatarColor ?? "#3e6b4f"}
+          name="avatarColor"
+          type="color"
+        />
+      </label>
+      <label className="block sm:col-span-2">
+        <span className="text-sm font-semibold text-ink">Rol</span>
+        <select
+          className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
+          defaultValue={profile?.role ?? "responsable"}
+          name="role"
+        >
+          <option value="responsable">Responsable</option>
+          <option value="supervisor">Supervisor</option>
+          <option value="admin">Admin</option>
+        </select>
+      </label>
     </div>
   );
 }

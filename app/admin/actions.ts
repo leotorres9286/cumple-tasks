@@ -1,8 +1,9 @@
 "use server";
 
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
-import type { RecurrenceKind, TaskKind, Weekday } from "@/lib/types";
+import { createClient as createServerClient } from "@/lib/supabase/server";
+import type { RecurrenceKind, TaskKind, UserRole, Weekday } from "@/lib/types";
 
 const weekdays: Weekday[] = [
   "lunes",
@@ -56,7 +57,7 @@ function readRecurrence(formData: FormData) {
 }
 
 async function requireAdmin() {
-  const supabase = await createClient();
+  const supabase = await createServerClient();
   const {
     data: { user }
   } = await supabase.auth.getUser();
@@ -72,10 +73,67 @@ async function requireAdmin() {
     .single<{ role: string }>();
 
   if (error || profile?.role !== "admin") {
-    throw new Error("Solo un admin puede gestionar tareas.");
+    throw new Error("Solo un admin puede gestionar esta seccion.");
   }
 
   return { supabase, user };
+}
+
+function createAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (
+    !supabaseUrl ||
+    !serviceRoleKey ||
+    serviceRoleKey === "replace-with-service-role-key-for-server-jobs-only"
+  ) {
+    throw new Error("Configura SUPABASE_SERVICE_ROLE_KEY para crear o borrar usuarios.");
+  }
+
+  return createSupabaseClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  });
+}
+
+function getInitials(fullName: string) {
+  return fullName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+}
+
+function readRole(formData: FormData) {
+  const role = readString(formData, "role") as UserRole;
+
+  if (!["admin", "supervisor", "responsable"].includes(role)) {
+    throw new Error("Rol de usuario invalido.");
+  }
+
+  return role;
+}
+
+function readProfilePayload(formData: FormData) {
+  const fullName = readString(formData, "fullName");
+  const role = readRole(formData);
+  const avatarColor = readString(formData, "avatarColor") || "#3e6b4f";
+  const initials = (readString(formData, "initials") || getInitials(fullName)).slice(0, 3);
+
+  if (!fullName || !initials) {
+    throw new Error("Nombre e iniciales son obligatorios.");
+  }
+
+  return {
+    full_name: fullName,
+    initials: initials.toUpperCase(),
+    role,
+    avatar_color: avatarColor
+  };
 }
 
 function readTemplatePayload(formData: FormData, createdBy: string) {
@@ -229,6 +287,89 @@ export async function deleteTaskTemplate(formData: FormData) {
   }
 
   const { error } = await supabase.from("task_templates").delete().eq("id", templateId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/");
+}
+
+export async function createManagedUser(formData: FormData) {
+  await requireAdmin();
+  const adminClient = createAdminClient();
+  const email = readString(formData, "email");
+  const password = readString(formData, "password");
+  const profilePayload = readProfilePayload(formData);
+
+  if (!email || password.length < 6) {
+    throw new Error("Introduce email y una contrasena de al menos 6 caracteres.");
+  }
+
+  const { data, error } = await adminClient.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: {
+      full_name: profilePayload.full_name
+    }
+  });
+
+  if (error || !data.user) {
+    throw new Error(error?.message ?? "No se pudo crear el usuario.");
+  }
+
+  const { error: profileError } = await adminClient
+    .from("profiles")
+    .update(profilePayload)
+    .eq("id", data.user.id);
+
+  if (profileError) {
+    throw new Error(profileError.message);
+  }
+
+  revalidatePath("/");
+}
+
+export async function updateManagedUser(formData: FormData) {
+  const { supabase, user } = await requireAdmin();
+  const userId = readString(formData, "userId");
+  const profilePayload = readProfilePayload(formData);
+
+  if (!userId) {
+    throw new Error("Falta el identificador del usuario.");
+  }
+
+  if (userId === user.id && profilePayload.role !== "admin") {
+    throw new Error("No puedes quitarte tu propio rol admin.");
+  }
+
+  const { error } = await supabase
+    .from("profiles")
+    .update(profilePayload)
+    .eq("id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/");
+}
+
+export async function deleteManagedUser(formData: FormData) {
+  const { user } = await requireAdmin();
+  const adminClient = createAdminClient();
+  const userId = readString(formData, "userId");
+
+  if (!userId) {
+    throw new Error("Falta el identificador del usuario.");
+  }
+
+  if (userId === user.id) {
+    throw new Error("No puedes borrar tu propio usuario.");
+  }
+
+  const { error } = await adminClient.auth.admin.deleteUser(userId);
 
   if (error) {
     throw new Error(error.message);
