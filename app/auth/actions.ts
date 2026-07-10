@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { isPublicSignupEnabled } from "@/lib/auth-settings";
 import { createClient } from "@/lib/supabase/server";
 
 function getAppUrl() {
@@ -40,6 +41,16 @@ export async function signInWithPassword(formData: FormData) {
 }
 
 export async function signUpWithPassword(formData: FormData) {
+  if (!isPublicSignupEnabled()) {
+    redirect(
+      withMessage(
+        "/login",
+        "error",
+        "El registro publico esta desactivado. Pide a un admin que cree tu usuario."
+      )
+    );
+  }
+
   const fullName = String(formData.get("fullName") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");

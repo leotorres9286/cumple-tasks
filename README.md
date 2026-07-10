@@ -65,6 +65,7 @@ La app protege `/` con Supabase Auth. Usa:
 - `/auth/callback` como callback OAuth/email.
 
 Las altas desde `/registro` crean perfiles con rol `responsable`. El rol `admin` debe asignarse desde seed, SQL o panel de Supabase.
+Puedes desactivar el registro publico con `PUBLIC_SIGNUP_ENABLED=false`. Esto bloquea `/registro` y su Server Action, pero no afecta a la creacion de usuarios desde la pestana `Admin`, que usa `SUPABASE_SERVICE_ROLE_KEY`.
 
 La pantalla principal todavia usa datos mock para poder validar UX mientras se conectan las queries de tareas.
 
@@ -135,6 +136,7 @@ NEXT_PUBLIC_SUPABASE_URL=https://TU_PROJECT_REF.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
 NEXT_PUBLIC_APP_URL=https://TU_APP.vercel.app
+PUBLIC_SIGNUP_ENABLED=true
 ```
 
 3. Build command:

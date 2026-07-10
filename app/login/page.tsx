@@ -1,6 +1,7 @@
 import { ClipboardList } from "lucide-react";
 import Link from "next/link";
 import { signInWithGoogle, signInWithPassword } from "@/app/auth/actions";
+import { isPublicSignupEnabled } from "@/lib/auth-settings";
 
 interface LoginPageProps {
   searchParams: Promise<{
@@ -12,6 +13,7 @@ interface LoginPageProps {
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;
+  const publicSignupEnabled = isPublicSignupEnabled();
   const redirectTo =
     params.redirectTo?.startsWith("/") && !params.redirectTo.startsWith("//")
       ? params.redirectTo
@@ -80,12 +82,18 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         </form>
       </section>
 
-      <p className="mt-5 text-center text-sm text-ink/65">
-        No tienes cuenta?{" "}
-        <Link className="font-semibold text-moss" href="/registro">
-          Crear cuenta
-        </Link>
-      </p>
+      {publicSignupEnabled ? (
+        <p className="mt-5 text-center text-sm text-ink/65">
+          No tienes cuenta?{" "}
+          <Link className="font-semibold text-moss" href="/registro">
+            Crear cuenta
+          </Link>
+        </p>
+      ) : (
+        <p className="mt-5 text-center text-sm text-ink/65">
+          Las cuentas nuevas las crea un admin.
+        </p>
+      )}
     </main>
   );
 }
