@@ -670,9 +670,7 @@ function AdminArea({
 }) {
   const [showCreateForm, setShowCreateForm] = useState(templates.length === 0);
   const [showCreateUserForm, setShowCreateUserForm] = useState(false);
-  const supervisors = profiles.filter(
-    (profile) => profile.role === "supervisor" || isAdmin(profile.role)
-  );
+  const supervisors = profiles;
   const responsibles = profiles.filter((profile) => profile.role === "responsable");
   const assignmentsByTemplate = useMemo(() => {
     return assignments.reduce<Map<string, string[]>>((map, assignment) => {
