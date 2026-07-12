@@ -3,6 +3,7 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { createClient as createServerClient } from "@/lib/supabase/server";
+import { isAdmin } from "@/lib/types";
 import type { ActionResult, RecurrenceKind, TaskKind, UserRole, Weekday } from "@/lib/types";
 
 function toActionError(error: unknown): ActionResult {
@@ -77,9 +78,9 @@ async function requireAdmin() {
     .from("profiles")
     .select("role")
     .eq("id", user.id)
-    .single<{ role: string }>();
+    .single<{ role: UserRole }>();
 
-  if (error || profile?.role !== "admin") {
+  if (error || !isAdmin(profile?.role)) {
     throw new Error("Solo un admin puede gestionar esta seccion.");
   }
 
@@ -115,14 +116,8 @@ function getInitials(fullName: string) {
     .join("");
 }
 
-function readRole(formData: FormData) {
-  const role = readString(formData, "role") as UserRole;
-
-  if (!["admin", "supervisor", "responsable"].includes(role)) {
-    throw new Error("Rol de usuario invalido.");
-  }
-
-  return role;
+function readRole(formData: FormData): UserRole {
+  return formData.get("isAdmin") === "on" ? "admin" : "responsable";
 }
 
 function readProfilePayload(formData: FormData) {
@@ -147,6 +142,7 @@ function readTemplatePayload(formData: FormData, createdBy: string) {
   const name = readString(formData, "name");
   const description = readString(formData, "description");
   const kind = readString(formData, "kind") as TaskKind;
+  const enforceSchedule = formData.get("enforceSchedule") === "on";
   const timeStart = readString(formData, "timeStart");
   const timeEnd = readString(formData, "timeEnd");
   const supervisorId = readString(formData, "supervisorId");
@@ -155,7 +151,7 @@ function readTemplatePayload(formData: FormData, createdBy: string) {
   const rewardPoints = readPositiveInteger(formData, "rewardPoints", 0);
   const { recurrenceKind, recurrenceWeekdays, recurrenceMonthDay } = readRecurrence(formData);
 
-  if (!name || !timeStart || !timeEnd || !supervisorId || !validFrom) {
+  if (!name || !supervisorId || !validFrom) {
     throw new Error("Faltan campos obligatorios de la tarea.");
   }
 
@@ -163,12 +159,23 @@ function readTemplatePayload(formData: FormData, createdBy: string) {
     throw new Error("Tipo de tarea invalido.");
   }
 
+  // El inicio y el fin solo son obligatorios cuando se habilita un horario de
+  // cumplimiento especifico; en caso contrario la tarea no tiene ventana horaria.
+  if (enforceSchedule) {
+    if (!timeStart || !timeEnd) {
+      throw new Error("Define inicio y fin para el horario de cumplimiento.");
+    }
+    if (timeStart >= timeEnd) {
+      throw new Error("El inicio debe ser anterior al fin.");
+    }
+  }
+
   return {
     name,
     description,
     kind,
-    time_start: timeStart,
-    time_end: timeEnd,
+    time_start: enforceSchedule ? timeStart : null,
+    time_end: enforceSchedule ? timeEnd : null,
     recurrence_kind: recurrenceKind,
     recurrence_weekdays: recurrenceWeekdays,
     recurrence_month_day: recurrenceMonthDay,
@@ -392,7 +399,7 @@ export async function updateManagedUser(
     }
 
     if (userId === user.id && profilePayload.role !== "admin") {
-      throw new Error("No puedes quitarte tu propio rol admin.");
+      throw new Error("No puedes cambiar tu propio rol de admin.");
     }
 
     const { error } = await supabase

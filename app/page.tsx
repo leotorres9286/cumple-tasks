@@ -1,14 +1,14 @@
 import { CumpleTasksApp } from "@/components/cumple-tasks-app";
-import {
-  getTasksForToday,
-  notifications,
-  profiles as mockProfiles,
-  rewardTotals,
-  taskAssignments as mockTaskAssignments,
-  taskTemplates as mockTaskTemplates
-} from "@/lib/mock-data";
 import { createClient } from "@/lib/supabase/server";
-import type { Profile, TaskAssignment, TaskTemplate, Weekday } from "@/lib/types";
+import type {
+  NotificationEvent,
+  Profile,
+  RewardTotal,
+  TaskAssignment,
+  TaskTemplate,
+  TaskWithRelations,
+  Weekday
+} from "@/lib/types";
 import { redirect } from "next/navigation";
 
 interface ProfileRow {
@@ -27,8 +27,8 @@ interface TaskTemplateRow {
   name: string;
   description: string;
   kind: TaskTemplate["kind"];
-  time_start: string;
-  time_end: string;
+  time_start: string | null;
+  time_end: string | null;
   recurrence_kind: TaskTemplate["recurrence"]["kind"];
   recurrence_weekdays: Weekday[];
   recurrence_month_day: number | null;
@@ -46,6 +46,16 @@ interface TaskAssignmentRow {
   id: string;
   task_template_id: string;
   responsible_id: string;
+  created_at: string;
+}
+
+interface NotificationRow {
+  id: string;
+  task_occurrence_id: string;
+  recipient_id: string;
+  actor_id: string;
+  message: string;
+  read_at: string | null;
   created_at: string;
 }
 
@@ -69,8 +79,8 @@ function mapTemplate(row: TaskTemplateRow): TaskTemplate {
     description: row.description,
     kind: row.kind,
     timeWindow: {
-      startTime: row.time_start.slice(0, 5),
-      endTime: row.time_end.slice(0, 5)
+      startTime: row.time_start ? row.time_start.slice(0, 5) : null,
+      endTime: row.time_end ? row.time_end.slice(0, 5) : null
     },
     recurrence: {
       kind: row.recurrence_kind,
@@ -97,6 +107,22 @@ function mapAssignment(row: TaskAssignmentRow): TaskAssignment {
   };
 }
 
+function mapNotification(row: NotificationRow): NotificationEvent {
+  return {
+    id: row.id,
+    taskOccurrenceId: row.task_occurrence_id,
+    recipientId: row.recipient_id,
+    actorId: row.actor_id,
+    message: row.message,
+    readAt: row.read_at,
+    createdAt: row.created_at
+  };
+}
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export default async function Home() {
   const supabase = await createClient();
   const {
@@ -117,7 +143,26 @@ export default async function Home() {
     redirect("/login?error=No se encontro el perfil de usuario.");
   }
 
-  const [profilesResult, templatesResult, assignmentsResult] = await Promise.all([
+  const today = todayIso();
+
+  // Materialize today's occurrences before reading the board. Idempotent.
+  await supabase.rpc("ensure_occurrences_for_date", { target_date: today });
+
+  const [
+    tasksResult,
+    totalsResult,
+    notificationsResult,
+    profilesResult,
+    templatesResult,
+    assignmentsResult
+  ] = await Promise.all([
+    supabase.rpc("tasks_for_date", { target_date: today }),
+    supabase.rpc("reward_totals"),
+    supabase
+      .from("notification_events")
+      .select("id,task_occurrence_id,recipient_id,actor_id,message,read_at,created_at")
+      .order("created_at", { ascending: false })
+      .returns<NotificationRow[]>(),
     supabase
       .from("profiles")
       .select("id,email,full_name,initials,role,avatar_color,created_at,updated_at")
@@ -136,22 +181,21 @@ export default async function Home() {
       .returns<TaskAssignmentRow[]>()
   ]);
 
-  const initialProfiles =
-    profilesResult.data && profilesResult.data.length > 0
-      ? profilesResult.data.map(mapProfile)
-      : mockProfiles;
-  const initialTemplates = templatesResult.data?.map(mapTemplate) ?? mockTaskTemplates;
-  const initialAssignments =
-    assignmentsResult.data?.map(mapAssignment) ?? mockTaskAssignments;
+  const initialTasks = (tasksResult.data as TaskWithRelations[] | null) ?? [];
+  const initialTotals = (totalsResult.data as RewardTotal[] | null) ?? [];
+  const initialNotifications = notificationsResult.data?.map(mapNotification) ?? [];
+  const initialProfiles = profilesResult.data?.map(mapProfile) ?? [];
+  const initialTemplates = templatesResult.data?.map(mapTemplate) ?? [];
+  const initialAssignments = assignmentsResult.data?.map(mapAssignment) ?? [];
 
   return (
     <CumpleTasksApp
-      initialTasks={getTasksForToday()}
+      initialTasks={initialTasks}
       initialProfiles={initialProfiles}
       initialTemplates={initialTemplates}
       initialAssignments={initialAssignments}
-      initialTotals={rewardTotals}
-      initialNotifications={notifications}
+      initialTotals={initialTotals}
+      initialNotifications={initialNotifications}
       viewerProfile={mapProfile(profile)}
     />
   );

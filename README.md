@@ -67,7 +67,7 @@ La app protege `/` con Supabase Auth. Usa:
 Las altas desde `/registro` crean perfiles con rol `responsable`. El rol `admin` debe asignarse desde seed, SQL o panel de Supabase.
 Puedes desactivar el registro publico con `PUBLIC_SIGNUP_ENABLED=false`. Esto bloquea `/registro` y su Server Action, pero no afecta a la creacion de usuarios desde la pestana `Admin`, que usa `SUPABASE_SERVICE_ROLE_KEY`.
 
-La pantalla principal todavia usa datos mock para poder validar UX mientras se conectan las queries de tareas.
+La pantalla principal lee los datos desde Supabase. Al cargar, `page.tsx` materializa las ocurrencias del dia con `ensure_occurrences_for_date` y arma el tablero, los totales y las notificaciones con las funciones `tasks_for_date` y `reward_totals` (RLS por usuario). El acceso lo resuelve RLS: un admin ve todo, el resto solo las tareas donde participa como supervisor o responsable.
 
 ## Supabase Local
 
@@ -157,4 +157,4 @@ La imagen espera que exista `.env`.
 
 ## Siguiente Paso Tecnico
 
-La UI actual usa datos mock tipados. Para conectar Supabase, sustituye las lecturas de `lib/mock-data.ts` por queries en Server Components o Server Actions y usa la tabla `notification_events` con Supabase Realtime para los toasts del supervisor.
+La lectura de tareas ya esta conectada a Supabase (ver `app/page.tsx` y la migracion `20260712000000_occurrences_and_reads.sql`); `lib/mock-data.ts` queda como referencia de tipos y ya no se usa en runtime. Los cambios de estado del tablero se persisten con la Server Action `updateOccurrenceStatus` (`app/tasks/actions.ts`), con UI optimista y reversion si la RLS rechaza la transicion. Pendiente: usar `notification_events` con Supabase Realtime para refrescar el tablero y los toasts del supervisor en vivo (hoy los totales se refrescan via `revalidatePath` tras cada cambio, pero no hay realtime entre usuarios).

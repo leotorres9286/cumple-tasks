@@ -1,7 +1,16 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "PowerShell(npm run typecheck)",
+      "PowerShell(npm run lint)",
+      "PowerShell($sb = \\(Get-Command supabase -ErrorAction SilentlyContinue\\); if \\($sb\\) { \"supabase: $\\($sb.Source\\)\"; supabase status 2>&1 | Select-Object -First 20 } else { \"supabase CLI no encontrado\" })",
+      "PowerShell(git -C c:\\\\nodeprojects\\\\cumple-tasks status --short)",
+      "PowerShell(git -C c:\\\\nodeprojects\\\\cumple-tasks diff --stat)",
+      "PowerShell(\"---\")",
+      "Bash(npx tsc *)",
+      "Bash(npx next *)",
+      "Bash(timeout 180 npx next build)"
     ]
   }
 }

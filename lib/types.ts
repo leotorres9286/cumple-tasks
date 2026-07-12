@@ -44,8 +44,8 @@ export interface RecurrenceRule {
 }
 
 export interface TimeWindow {
-  startTime: string;
-  endTime: string;
+  startTime: string | null;
+  endTime: string | null;
 }
 
 export interface TaskTemplate {
@@ -77,6 +77,8 @@ export interface TaskOccurrence {
   taskTemplateId: string;
   scheduledFor: string;
   status: TaskStatus;
+  startedBy: string | null;
+  startedAt: string | null;
   completedBy: string | null;
   completedAt: string | null;
   verifiedBy: string | null;
@@ -142,6 +144,10 @@ export const roleLabels: Record<UserRole, string> = {
   supervisor: "Supervisor",
   responsable: "Responsable"
 };
+
+export function isAdmin(role: UserRole | null | undefined): boolean {
+  return role === "admin";
+}
 
 export const taskKindLabels: Record<TaskKind, string> = {
   accion: "Accion",

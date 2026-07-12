@@ -32,7 +32,9 @@ import {
   updateTaskTemplate
 } from "@/app/admin/actions";
 import { signOut } from "@/app/auth/actions";
+import { updateOccurrenceStatus } from "@/app/tasks/actions";
 import { ActionForm } from "@/components/action-form";
+import { useConfirm } from "@/components/confirm-dialog";
 import { SubmitButton } from "@/components/submit-button";
 import { useToast } from "@/components/toast";
 import type {
@@ -46,7 +48,7 @@ import type {
   TaskWithRelations,
   UserRole
 } from "@/lib/types";
-import { roleLabels, statusLabels, taskKindLabels } from "@/lib/types";
+import { isAdmin, roleLabels, statusLabels, taskKindLabels } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 interface CumpleTasksAppProps {
@@ -76,6 +78,24 @@ const statusFlow: TaskStatus[] = [
   "finalizada",
   "verificada"
 ];
+
+// Estados en los que una tarea esta comenzada pero no finalizada.
+const inProgressStatuses: TaskStatus[] = ["iniciada", "en_proceso"];
+
+function formatDateTime(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? null
+    : parsed.toLocaleString("es-ES", {
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+}
 
 const weekdayOptions = [
   { value: "lunes", label: "L" },
@@ -112,7 +132,36 @@ export function CumpleTasksApp({
     }
   }, []);
 
-  function changeStatus(taskId: string, nextStatus: TaskStatus) {
+  async function changeStatus(taskId: string, nextStatus: TaskStatus) {
+    const previousTasks = tasks;
+    const currentTask = tasks.find((task) => task.occurrence.id === taskId);
+    const taskName = currentTask?.template.name;
+    const nowIso = new Date().toISOString();
+
+    const isStarting =
+      inProgressStatuses.includes(nextStatus) &&
+      currentTask !== undefined &&
+      !inProgressStatuses.includes(currentTask.occurrence.status);
+
+    // Espejo cliente de la regla del servidor: no se puede comenzar otra tarea
+    // teniendo una en proceso. Evita el viaje al servidor y da feedback inmediato.
+    if (isStarting) {
+      const blocking = tasks.find(
+        (task) =>
+          task.occurrence.id !== taskId &&
+          task.occurrence.startedBy === viewer.id &&
+          inProgressStatuses.includes(task.occurrence.status)
+      );
+
+      if (blocking) {
+        toast(
+          `Finaliza "${blocking.template.name}" antes de comenzar otra tarea.`,
+          "error"
+        );
+        return;
+      }
+    }
+
     setTasks((currentTasks) =>
       currentTasks.map((task) => {
         if (task.occurrence.id !== taskId) {
@@ -121,25 +170,47 @@ export function CumpleTasksApp({
 
         const isCompleting = nextStatus === "finalizada";
         const isVerifying = nextStatus === "verificada" || nextStatus === "incorrecta";
+        const isReworking =
+          nextStatus === "creada" ||
+          nextStatus === "iniciada" ||
+          nextStatus === "en_proceso";
+        const shouldStamp = isStarting;
 
         return {
           ...task,
           occurrence: {
             ...task.occurrence,
             status: nextStatus,
-            completedBy: isCompleting ? viewer.id : task.occurrence.completedBy,
-            completedAt: isCompleting ? new Date().toISOString() : task.occurrence.completedAt,
+            startedBy: shouldStamp ? viewer.id : task.occurrence.startedBy,
+            startedAt: shouldStamp ? nowIso : task.occurrence.startedAt,
+            completedBy: isCompleting
+              ? viewer.id
+              : isReworking
+                ? null
+                : task.occurrence.completedBy,
+            completedAt: isCompleting
+              ? nowIso
+              : isReworking
+                ? null
+                : task.occurrence.completedAt,
             verifiedBy: isVerifying ? viewer.id : task.occurrence.verifiedBy,
-            verifiedAt: isVerifying ? new Date().toISOString() : task.occurrence.verifiedAt,
-            updatedAt: new Date().toISOString()
+            verifiedAt: isVerifying ? nowIso : task.occurrence.verifiedAt,
+            updatedAt: nowIso
           }
         };
       })
     );
 
-    const taskName = tasks.find((task) => task.occurrence.id === taskId)?.template.name;
+    const result = await updateOccurrenceStatus(taskId, nextStatus);
+
+    if (!result.ok) {
+      setTasks(previousTasks);
+      toast(result.message, "error");
+      return;
+    }
+
     toast(
-      `${taskName ?? "Tarea"} cambio a ${statusLabels[nextStatus].toLowerCase()}. Supervisor notificado.`,
+      `${taskName ?? "Tarea"} cambio a ${statusLabels[nextStatus].toLowerCase()}.`,
       "info"
     );
   }
@@ -191,7 +262,11 @@ export function CumpleTasksApp({
           </div>
         </div>
 
-        <nav className="mt-3 grid grid-cols-3 gap-2">
+        <nav
+          className={`mt-3 grid gap-2 ${
+            isAdmin(viewer.role) ? "grid-cols-3" : "grid-cols-2"
+          }`}
+        >
           <TabButton
             active={activeTab === "tablero"}
             icon={<PanelTop size={16} />}
@@ -204,13 +279,14 @@ export function CumpleTasksApp({
             label="Totales"
             onClick={() => setActiveTab("totales")}
           />
-          <TabButton
-            active={activeTab === "admin"}
-            disabled={viewer.role !== "admin"}
-            icon={<UserCog size={16} />}
-            label="Admin"
-            onClick={() => setActiveTab("admin")}
-          />
+          {isAdmin(viewer.role) ? (
+            <TabButton
+              active={activeTab === "admin"}
+              icon={<UserCog size={16} />}
+              label="Admin"
+              onClick={() => setActiveTab("admin")}
+            />
+          ) : null}
         </nav>
       </header>
 
@@ -406,13 +482,34 @@ function TaskCard({
   onStatusChange: (taskId: string, status: TaskStatus) => void;
 }) {
   const currentIndex = statusFlow.indexOf(task.occurrence.status);
-  const nextStatus = statusFlow[Math.min(currentIndex + 1, statusFlow.length - 1)] ?? "en_proceso";
+  const nextStatus =
+    task.occurrence.status === "incorrecta"
+      ? "en_proceso"
+      : statusFlow[Math.min(currentIndex + 1, statusFlow.length - 1)] ?? "en_proceso";
   const canResponsibleMove =
     viewerRole === "responsable" &&
     ["creada", "iniciada", "en_proceso", "incorrecta"].includes(task.occurrence.status);
   const canSupervisorReview =
     viewerRole === "supervisor" && task.occurrence.status === "finalizada";
-  const canAdminMove = viewerRole === "admin";
+  const canAdminMove = isAdmin(viewerRole);
+  const startedLabel = formatDateTime(task.occurrence.startedAt);
+  const completedLabel = formatDateTime(task.occurrence.completedAt);
+  const confirm = useConfirm();
+
+  async function handleAdvance() {
+    const confirmed = await confirm({
+      title: "Avanzar tarea",
+      description: `"${task.template.name}" pasara a ${statusLabels[
+        nextStatus
+      ].toLowerCase()}.`,
+      confirmLabel: "Avanzar",
+      cancelLabel: "Cancelar"
+    });
+
+    if (confirmed) {
+      onStatusChange(task.occurrence.id, nextStatus);
+    }
+  }
 
   return (
     <Reorder.Item
@@ -434,13 +531,22 @@ function TaskCard({
 
       <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-ink/70">
         <span className="rounded-md bg-paper px-2 py-1">
-          {task.template.timeWindow.startTime}-{task.template.timeWindow.endTime}
+          {task.template.timeWindow.startTime && task.template.timeWindow.endTime
+            ? `${task.template.timeWindow.startTime}-${task.template.timeWindow.endTime}`
+            : "Sin horario"}
         </span>
         <span className="rounded-md bg-paper px-2 py-1">
           {taskKindLabels[task.template.kind]}
           {task.occurrence.scoreValue ? ` ${task.occurrence.scoreValue}` : ""}
         </span>
       </div>
+
+      {startedLabel || completedLabel ? (
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-ink/55">
+          {startedLabel ? <span>Inicio: {startedLabel}</span> : null}
+          {completedLabel ? <span>Fin: {completedLabel}</span> : null}
+        </div>
+      ) : null}
 
       <div className="mt-3 flex items-center justify-between gap-2">
         <div className="flex -space-x-2">
@@ -474,7 +580,7 @@ function TaskCard({
         {canResponsibleMove || canAdminMove ? (
           <button
             className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-ink px-3 text-sm font-semibold text-white"
-            onClick={() => onStatusChange(task.occurrence.id, nextStatus)}
+            onClick={handleAdvance}
             type="button"
           >
             <ChevronRight size={16} />
@@ -565,7 +671,7 @@ function AdminArea({
   const [showCreateForm, setShowCreateForm] = useState(templates.length === 0);
   const [showCreateUserForm, setShowCreateUserForm] = useState(false);
   const supervisors = profiles.filter(
-    (profile) => profile.role === "supervisor" || profile.role === "admin"
+    (profile) => profile.role === "supervisor" || isAdmin(profile.role)
   );
   const responsibles = profiles.filter((profile) => profile.role === "responsable");
   const assignmentsByTemplate = useMemo(() => {
@@ -650,8 +756,10 @@ function AdminArea({
                     </span>
                   </div>
                   <p className="text-xs text-ink/60">
-                    {template.recurrence.kind} · {template.timeWindow.startTime}-
-                    {template.timeWindow.endTime}
+                    {template.recurrence.kind} ·{" "}
+                    {template.timeWindow.startTime && template.timeWindow.endTime
+                      ? `${template.timeWindow.startTime}-${template.timeWindow.endTime}`
+                      : "sin horario"}
                   </p>
                 </div>
                 <span className="rounded-full bg-moss/10 px-2 py-1 text-xs font-semibold text-moss">
@@ -674,7 +782,15 @@ function AdminArea({
                     {template.active ? "Pausar" : "Activar"}
                   </SubmitButton>
                 </ActionForm>
-                <ActionForm action={deleteTaskTemplate}>
+                <ActionForm
+                  action={deleteTaskTemplate}
+                  confirm={{
+                    title: "Borrar tarea",
+                    description: `Se eliminara "${template.name}" junto con sus ocurrencias. Esta accion no se puede deshacer.`,
+                    confirmLabel: "Borrar",
+                    tone: "danger"
+                  }}
+                >
                   <input name="templateId" type="hidden" value={template.id} />
                   <SubmitButton
                     className="flex h-9 items-center gap-2 rounded-lg border border-coral/25 bg-white px-3 text-xs font-semibold text-coral shadow-sm"
@@ -785,7 +901,7 @@ function AdminArea({
                 </summary>
                 <ActionForm action={updateManagedUser} className="mt-3">
                   <input name="userId" type="hidden" value={profile.id} />
-                  <UserFormFields profile={profile} />
+                  <UserFormFields profile={profile} isSelf={profile.id === viewerProfile.id} />
                   <SubmitButton
                     className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 text-sm font-semibold text-white"
                     icon={<Save size={16} />}
@@ -794,7 +910,16 @@ function AdminArea({
                     Guardar usuario
                   </SubmitButton>
                 </ActionForm>
-                <ActionForm action={deleteManagedUser} className="mt-2">
+                <ActionForm
+                  action={deleteManagedUser}
+                  className="mt-2"
+                  confirm={{
+                    title: "Borrar usuario",
+                    description: `Se eliminara la cuenta de "${profile.fullName}". Esta accion no se puede deshacer.`,
+                    confirmLabel: "Borrar",
+                    tone: "danger"
+                  }}
+                >
                   <input name="userId" type="hidden" value={profile.id} />
                   <SubmitButton
                     className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-coral/25 bg-white px-4 text-sm font-semibold text-coral shadow-sm disabled:cursor-not-allowed disabled:opacity-45"
@@ -821,11 +946,15 @@ function AdminArea({
 
 function UserFormFields({
   profile,
-  requirePassword
+  requirePassword,
+  isSelf
 }: {
   profile?: Profile;
   requirePassword?: boolean;
+  isSelf?: boolean;
 }) {
+  const admin = isAdmin(profile?.role);
+
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       <label className="block sm:col-span-2">
@@ -884,18 +1013,27 @@ function UserFormFields({
           type="color"
         />
       </label>
-      <label className="block sm:col-span-2">
+      <div className="block sm:col-span-2">
         <span className="text-sm font-semibold text-ink">Rol</span>
-        <select
-          className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
-          defaultValue={profile?.role ?? "responsable"}
-          name="role"
-        >
-          <option value="responsable">Responsable</option>
-          <option value="supervisor">Supervisor</option>
-          <option value="admin">Admin</option>
-        </select>
-      </label>
+
+        <label className="mt-1 flex items-center gap-2">
+          <input
+            className="size-4 rounded border-ink/25 text-moss focus:ring-moss/25 disabled:cursor-not-allowed disabled:opacity-45"
+            defaultChecked={admin}
+            disabled={isSelf}
+            name="isAdmin"
+            type="checkbox"
+          />
+          <span className="text-sm text-ink">Es administrador</span>
+        </label>
+
+        {isSelf ? (
+          <>
+            <input name="isAdmin" type="hidden" value={admin ? "on" : ""} />
+            <p className="mt-1 text-xs text-ink/55">No puedes cambiar tu propio rol.</p>
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -916,6 +1054,10 @@ function TaskTemplateFormFields({
   const validUntil = template?.validUntil?.slice(0, 10) ?? "";
   const [recurrenceKind, setRecurrenceKind] = useState<RecurrenceKind>(
     template?.recurrence.kind ?? "diaria"
+  );
+  // El horario es opcional: solo se piden inicio y fin cuando esta habilitado.
+  const [enforceSchedule, setEnforceSchedule] = useState(
+    template ? Boolean(template.timeWindow.startTime) : false
   );
 
   return (
@@ -961,26 +1103,48 @@ function TaskTemplateFormFields({
             type="number"
           />
         </label>
-        <label className="block">
-          <span className="text-sm font-semibold text-ink">Inicio</span>
+        <label className="flex items-start gap-2 sm:col-span-2">
           <input
-            className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
-            defaultValue={template?.timeWindow.startTime ?? "17:00"}
-            name="timeStart"
-            required
-            type="time"
+            checked={enforceSchedule}
+            className="mt-0.5 size-4 rounded border-ink/25 text-moss focus:ring-moss/25"
+            name="enforceSchedule"
+            onChange={(event) => setEnforceSchedule(event.target.checked)}
+            type="checkbox"
           />
+          <span>
+            <span className="text-sm font-semibold text-ink">
+              Horario de cumplimiento especifico
+            </span>
+            <span className="block text-xs text-ink/55">
+              Activa para exigir una hora de inicio y fin. Si lo dejas apagado la
+              tarea no tiene ventana horaria.
+            </span>
+          </span>
         </label>
-        <label className="block">
-          <span className="text-sm font-semibold text-ink">Fin</span>
-          <input
-            className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
-            defaultValue={template?.timeWindow.endTime ?? "18:00"}
-            name="timeEnd"
-            required
-            type="time"
-          />
-        </label>
+        {enforceSchedule ? (
+          <>
+            <label className="block">
+              <span className="text-sm font-semibold text-ink">Inicio</span>
+              <input
+                className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
+                defaultValue={template?.timeWindow.startTime ?? "17:00"}
+                name="timeStart"
+                required
+                type="time"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-semibold text-ink">Fin</span>
+              <input
+                className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
+                defaultValue={template?.timeWindow.endTime ?? "18:00"}
+                name="timeEnd"
+                required
+                type="time"
+              />
+            </label>
+          </>
+        ) : null}
         <label className="block">
           <span className="text-sm font-semibold text-ink">Desde</span>
           <input
