@@ -113,6 +113,11 @@ export interface RewardTotal {
   monthly: number;
 }
 
+export interface ActionResult {
+  ok: boolean;
+  message: string;
+}
+
 export interface NotificationEvent {
   id: string;
   taskOccurrenceId: string;

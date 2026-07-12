@@ -32,6 +32,9 @@ import {
   updateTaskTemplate
 } from "@/app/admin/actions";
 import { signOut } from "@/app/auth/actions";
+import { ActionForm } from "@/components/action-form";
+import { SubmitButton } from "@/components/submit-button";
+import { useToast } from "@/components/toast";
 import type {
   NotificationEvent,
   Profile,
@@ -95,22 +98,13 @@ export function CumpleTasksApp({
 }: CumpleTasksAppProps) {
   const [activeTab, setActiveTab] = useState<Tab>("tablero");
   const [tasks, setTasks] = useState(initialTasks);
-  const [toast, setToast] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const viewer = useMemo(() => viewerProfile, [viewerProfile]);
 
   const visibleNotifications = initialNotifications.filter(
     (notification) => notification.recipientId === viewer.id
   );
-
-  useEffect(() => {
-    if (!toast) {
-      return;
-    }
-
-    const timeout = window.setTimeout(() => setToast(null), 3200);
-    return () => window.clearTimeout(timeout);
-  }, [toast]);
 
   useEffect(() => {
     if ("serviceWorker" in navigator) {
@@ -144,8 +138,9 @@ export function CumpleTasksApp({
     );
 
     const taskName = tasks.find((task) => task.occurrence.id === taskId)?.template.name;
-    setToast(
-      `${taskName ?? "Tarea"} cambio a ${statusLabels[nextStatus].toLowerCase()}. Supervisor notificado.`
+    toast(
+      `${taskName ?? "Tarea"} cambio a ${statusLabels[nextStatus].toLowerCase()}. Supervisor notificado.`,
+      "info"
     );
   }
 
@@ -186,13 +181,12 @@ export function CumpleTasksApp({
               ) : null}
             </button>
             <form action={signOut}>
-              <button
+              <SubmitButton
                 className="grid size-10 place-items-center rounded-full border border-ink/10 bg-white text-ink shadow-sm"
+                icon={<LogOut size={18} />}
+                spinnerSize={18}
                 title="Cerrar sesion"
-                type="submit"
-              >
-                <LogOut size={18} />
-              </button>
+              />
             </form>
           </div>
         </div>
@@ -269,19 +263,6 @@ export function CumpleTasksApp({
           ) : null}
         </AnimatePresence>
       </section>
-
-      <AnimatePresence>
-        {toast ? (
-          <motion.div
-            animate={{ opacity: 1, y: 0 }}
-            className="fixed inset-x-3 bottom-4 z-30 mx-auto max-w-md rounded-lg border border-moss/20 bg-ink px-4 py-3 text-sm font-medium text-white shadow-soft"
-            exit={{ opacity: 0, y: 18 }}
-            initial={{ opacity: 0, y: 18 }}
-          >
-            {toast}
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
     </main>
   );
 }
@@ -626,17 +607,21 @@ function AdminArea({
             <Plus size={18} className="text-moss" />
             <h3 className="font-semibold text-ink">Nueva tarea</h3>
           </div>
-          <form action={createTaskTemplate} className="space-y-4">
+          <ActionForm
+            action={createTaskTemplate}
+            className="space-y-4"
+            onSuccess={() => setShowCreateForm(false)}
+          >
             <TaskTemplateFormFields responsibles={responsibles} supervisors={supervisors} />
-            <button
+            <SubmitButton
               className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 text-sm font-semibold text-white disabled:opacity-45"
               disabled={!canManageTasks}
-              type="submit"
+              icon={<Save size={16} />}
+              pendingLabel="Creando..."
             >
-              <Save size={16} />
               Crear tarea
-            </button>
-          </form>
+            </SubmitButton>
+          </ActionForm>
         </section>
       ) : null}
 
@@ -674,37 +659,38 @@ function AdminArea({
                 </span>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                <form action={setTaskTemplateActive}>
+                <ActionForm action={setTaskTemplateActive}>
                   <input name="templateId" type="hidden" value={template.id} />
                   <input
                     name="active"
                     type="hidden"
                     value={template.active ? "false" : "true"}
                   />
-                  <button
+                  <SubmitButton
                     className="flex h-9 items-center gap-2 rounded-lg border border-ink/10 bg-white px-3 text-xs font-semibold text-ink shadow-sm"
-                    type="submit"
+                    icon={template.active ? <PauseCircle size={15} /> : <PlayCircle size={15} />}
+                    spinnerSize={15}
                   >
-                    {template.active ? <PauseCircle size={15} /> : <PlayCircle size={15} />}
                     {template.active ? "Pausar" : "Activar"}
-                  </button>
-                </form>
-                <form action={deleteTaskTemplate}>
+                  </SubmitButton>
+                </ActionForm>
+                <ActionForm action={deleteTaskTemplate}>
                   <input name="templateId" type="hidden" value={template.id} />
-                  <button
+                  <SubmitButton
                     className="flex h-9 items-center gap-2 rounded-lg border border-coral/25 bg-white px-3 text-xs font-semibold text-coral shadow-sm"
-                    type="submit"
+                    icon={<Trash2 size={15} />}
+                    pendingLabel="Borrando..."
+                    spinnerSize={15}
                   >
-                    <Trash2 size={15} />
                     Borrar
-                  </button>
-                </form>
+                  </SubmitButton>
+                </ActionForm>
               </div>
               <details className="mt-3">
                 <summary className="cursor-pointer text-sm font-semibold text-moss">
                   Editar tarea
                 </summary>
-                <form action={updateTaskTemplate} className="mt-3 space-y-4">
+                <ActionForm action={updateTaskTemplate} className="mt-3 space-y-4">
                   <input name="templateId" type="hidden" value={template.id} />
                   <TaskTemplateFormFields
                     assignedResponsibleIds={assignmentsByTemplate.get(template.id) ?? []}
@@ -712,15 +698,15 @@ function AdminArea({
                     supervisors={supervisors}
                     template={template}
                   />
-                  <button
+                  <SubmitButton
                     className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 text-sm font-semibold text-white disabled:opacity-45"
                     disabled={!canManageTasks}
-                    type="submit"
+                    icon={<Save size={16} />}
+                    pendingLabel="Guardando..."
                   >
-                    <Save size={16} />
                     Guardar cambios
-                  </button>
-                </form>
+                  </SubmitButton>
+                </ActionForm>
               </details>
             </article>
           ))}
@@ -749,23 +735,24 @@ function AdminArea({
         </div>
 
         {showCreateUserForm ? (
-          <form
+          <ActionForm
             action={createManagedUser}
             className="mb-4 rounded-lg border border-ink/10 bg-paper p-3"
+            onSuccess={() => setShowCreateUserForm(false)}
           >
             <div className="mb-3 flex items-center gap-2">
               <UserPlus size={17} className="text-moss" />
               <h4 className="text-sm font-semibold text-ink">Nuevo usuario</h4>
             </div>
             <UserFormFields requirePassword />
-            <button
+            <SubmitButton
               className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 text-sm font-semibold text-white"
-              type="submit"
+              icon={<Save size={16} />}
+              pendingLabel="Creando..."
             >
-              <Save size={16} />
               Crear usuario
-            </button>
-          </form>
+            </SubmitButton>
+          </ActionForm>
         ) : null}
 
         <div className="space-y-3">
@@ -796,28 +783,28 @@ function AdminArea({
                 <summary className="cursor-pointer text-sm font-semibold text-moss">
                   Editar usuario
                 </summary>
-                <form action={updateManagedUser} className="mt-3">
+                <ActionForm action={updateManagedUser} className="mt-3">
                   <input name="userId" type="hidden" value={profile.id} />
                   <UserFormFields profile={profile} />
-                  <button
+                  <SubmitButton
                     className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 text-sm font-semibold text-white"
-                    type="submit"
+                    icon={<Save size={16} />}
+                    pendingLabel="Guardando..."
                   >
-                    <Save size={16} />
                     Guardar usuario
-                  </button>
-                </form>
-                <form action={deleteManagedUser} className="mt-2">
+                  </SubmitButton>
+                </ActionForm>
+                <ActionForm action={deleteManagedUser} className="mt-2">
                   <input name="userId" type="hidden" value={profile.id} />
-                  <button
+                  <SubmitButton
                     className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-coral/25 bg-white px-4 text-sm font-semibold text-coral shadow-sm disabled:cursor-not-allowed disabled:opacity-45"
                     disabled={profile.id === viewerProfile.id}
-                    type="submit"
+                    icon={<Trash2 size={16} />}
+                    pendingLabel="Borrando..."
                   >
-                    <Trash2 size={16} />
                     {profile.id === viewerProfile.id ? "No puedes borrarte" : "Borrar usuario"}
-                  </button>
-                </form>
+                  </SubmitButton>
+                </ActionForm>
               </details>
             </article>
           ))}

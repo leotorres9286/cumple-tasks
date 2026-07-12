@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { ToastProvider } from "@/components/toast";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -26,7 +27,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es">
-      <body>{children}</body>
+      <body>
+        <ToastProvider>{children}</ToastProvider>
+      </body>
     </html>
   );
 }

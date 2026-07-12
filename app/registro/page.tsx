@@ -1,6 +1,8 @@
 import { ClipboardList } from "lucide-react";
 import Link from "next/link";
 import { signUpWithPassword } from "@/app/auth/actions";
+import { ParamsToast } from "@/components/params-toast";
+import { SubmitButton } from "@/components/submit-button";
 import { isPublicSignupEnabled } from "@/lib/auth-settings";
 
 interface RegisterPageProps {
@@ -27,13 +29,9 @@ export default async function RegisterPage({ searchParams }: RegisterPageProps) 
         </div>
       </div>
 
-      <section className="rounded-lg border border-ink/10 bg-white p-5 shadow-sm">
-        {params.error ? (
-          <div className="mb-4 rounded-lg border border-coral/30 bg-coral/10 px-3 py-2 text-sm font-medium text-ink">
-            {params.error}
-          </div>
-        ) : null}
+      <ParamsToast error={params.error} />
 
+      <section className="rounded-lg border border-ink/10 bg-white p-5 shadow-sm">
         {publicSignupEnabled ? (
           <form action={signUpWithPassword} className="space-y-4">
             <label className="block">
@@ -70,12 +68,12 @@ export default async function RegisterPage({ searchParams }: RegisterPageProps) 
               />
             </label>
 
-            <button
-              className="flex h-11 w-full items-center justify-center rounded-lg bg-ink px-4 text-sm font-semibold text-white"
-              type="submit"
+            <SubmitButton
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 text-sm font-semibold text-white"
+              pendingLabel="Creando cuenta..."
             >
               Registrarme
-            </button>
+            </SubmitButton>
           </form>
         ) : (
           <div className="rounded-lg border border-ink/10 bg-paper px-3 py-3 text-sm font-medium text-ink/75">

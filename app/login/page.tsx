@@ -1,6 +1,8 @@
 import { ClipboardList } from "lucide-react";
 import Link from "next/link";
 import { signInWithGoogle, signInWithPassword } from "@/app/auth/actions";
+import { ParamsToast } from "@/components/params-toast";
+import { SubmitButton } from "@/components/submit-button";
 import { isPublicSignupEnabled } from "@/lib/auth-settings";
 
 interface LoginPageProps {
@@ -33,10 +35,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         </div>
       </div>
 
-      <section className="rounded-lg border border-ink/10 bg-white p-5 shadow-sm">
-        {params.error ? <AuthNotice tone="error" message={params.error} /> : null}
-        {params.message ? <AuthNotice tone="message" message={params.message} /> : null}
+      <ParamsToast error={params.error} message={params.message} />
 
+      <section className="rounded-lg border border-ink/10 bg-white p-5 shadow-sm">
         <form action={signInWithPassword} className="space-y-4">
           <input name="redirectTo" type="hidden" value={redirectTo} />
           <label className="block">
@@ -61,24 +62,24 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             />
           </label>
 
-          <button
-            className="flex h-11 w-full items-center justify-center rounded-lg bg-ink px-4 text-sm font-semibold text-white"
-            type="submit"
+          <SubmitButton
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 text-sm font-semibold text-white"
+            pendingLabel="Entrando..."
           >
             Entrar
-          </button>
+          </SubmitButton>
         </form>
 
         <div className="my-4 h-px bg-ink/10" />
 
         <form action={signInWithGoogle}>
           <input name="redirectTo" type="hidden" value={redirectTo} />
-          <button
-            className="flex h-11 w-full items-center justify-center rounded-lg border border-ink/15 bg-white px-4 text-sm font-semibold text-ink shadow-sm"
-            type="submit"
+          <SubmitButton
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-ink/15 bg-white px-4 text-sm font-semibold text-ink shadow-sm"
+            pendingLabel="Conectando..."
           >
             Entrar con Google
-          </button>
+          </SubmitButton>
         </form>
       </section>
 
@@ -95,25 +96,5 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         </p>
       )}
     </main>
-  );
-}
-
-function AuthNotice({
-  message,
-  tone
-}: {
-  message: string;
-  tone: "error" | "message";
-}) {
-  return (
-    <div
-      className={
-        tone === "error"
-          ? "mb-4 rounded-lg border border-coral/30 bg-coral/10 px-3 py-2 text-sm font-medium text-ink"
-          : "mb-4 rounded-lg border border-moss/25 bg-moss/10 px-3 py-2 text-sm font-medium text-ink"
-      }
-    >
-      {message}
-    </div>
   );
 }
