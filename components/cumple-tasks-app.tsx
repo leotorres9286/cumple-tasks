@@ -35,6 +35,7 @@ import { signOut } from "@/app/auth/actions";
 import type {
   NotificationEvent,
   Profile,
+  RecurrenceKind,
   RewardTotal,
   TaskAssignment,
   TaskStatus,
@@ -926,6 +927,9 @@ function TaskTemplateFormFields({
   const selectedWeekdays = template?.recurrence.weekdays ?? [];
   const validFrom = template?.validFrom?.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
   const validUntil = template?.validUntil?.slice(0, 10) ?? "";
+  const [recurrenceKind, setRecurrenceKind] = useState<RecurrenceKind>(
+    template?.recurrence.kind ?? "diaria"
+  );
 
   return (
     <>
@@ -1001,7 +1005,9 @@ function TaskTemplateFormFields({
           />
         </label>
         <label className="block">
-          <span className="text-sm font-semibold text-ink">Hasta</span>
+          <span className="text-sm font-semibold text-ink">
+            Hasta <span className="font-normal text-ink/45">(opcional)</span>
+          </span>
           <input
             className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
             defaultValue={validUntil}
@@ -1011,51 +1017,56 @@ function TaskTemplateFormFields({
         </label>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <label className="block">
+        <span className="text-sm font-semibold text-ink">Recurrencia</span>
+        <select
+          className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
+          name="recurrenceKind"
+          onChange={(event) => setRecurrenceKind(event.target.value as RecurrenceKind)}
+          value={recurrenceKind}
+        >
+          <option value="diaria">Diaria</option>
+          <option value="semanal">Semanal</option>
+          <option value="mensual">Mensual</option>
+        </select>
+      </label>
+
+      {recurrenceKind === "mensual" ? (
         <label className="block">
-          <span className="text-sm font-semibold text-ink">Recurrencia</span>
-          <select
-            className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
-            defaultValue={template?.recurrence.kind ?? "diaria"}
-            name="recurrenceKind"
-          >
-            <option value="diaria">Diaria</option>
-            <option value="semanal">Semanal</option>
-            <option value="mensual">Mensual</option>
-          </select>
-        </label>
-        <label className="block">
-          <span className="text-sm font-semibold text-ink">Dia mensual</span>
+          <span className="text-sm font-semibold text-ink">Dia mensual (1-31)</span>
           <input
             className="mt-1 h-10 w-full rounded-lg border border-ink/15 bg-white px-3 text-sm text-ink outline-none ring-moss/25 transition focus:border-moss focus:ring-4"
             defaultValue={template?.recurrence.monthDay ?? 1}
             max={31}
             min={1}
             name="monthDay"
+            required
             type="number"
           />
         </label>
-      </div>
+      ) : null}
 
-      <fieldset>
-        <legend className="text-sm font-semibold text-ink">Dias semanales</legend>
-        <div className="mt-2 grid grid-cols-7 gap-1">
-          {weekdayOptions.map((day) => (
-            <label
-              className="flex h-9 items-center justify-center gap-1 rounded-lg border border-ink/10 bg-white text-xs font-semibold text-ink"
-              key={day.value}
-            >
-              <input
-                defaultChecked={selectedWeekdays.includes(day.value)}
-                name="weekdays"
-                type="checkbox"
-                value={day.value}
-              />
-              {day.label}
-            </label>
-          ))}
-        </div>
-      </fieldset>
+      {recurrenceKind === "semanal" ? (
+        <fieldset>
+          <legend className="text-sm font-semibold text-ink">Dias semanales</legend>
+          <div className="mt-2 grid grid-cols-7 gap-1">
+            {weekdayOptions.map((day) => (
+              <label
+                className="flex h-9 items-center justify-center gap-1 rounded-lg border border-ink/10 bg-white text-xs font-semibold text-ink"
+                key={day.value}
+              >
+                <input
+                  defaultChecked={selectedWeekdays.includes(day.value)}
+                  name="weekdays"
+                  type="checkbox"
+                  value={day.value}
+                />
+                {day.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      ) : null}
 
       <label className="block">
         <span className="text-sm font-semibold text-ink">Supervisor</span>
